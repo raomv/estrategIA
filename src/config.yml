@@ -1,0 +1,7 @@
+data_path: "../data"
+llm_url: "http://localhost:11434"
+llm_name: "deepseek-r1:1.5b"
+embedding_model: "BAAI/bge-small-en"
+qdrant_url: "http://localhost:6333"
+collection_name: "prueba-20-03"
+chunk_size: 1024

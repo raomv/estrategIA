@@ -1,0 +1,5 @@
+env/
+venv/
+estrategIA-v1
+qdrant_data/
+__pycache__/
