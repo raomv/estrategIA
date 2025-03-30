@@ -3,3 +3,4 @@ venv/
 estrategIA-v1
 qdrant_data/
 __pycache__/
+data_temporal/

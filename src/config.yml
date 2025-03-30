@@ -1,7 +1,9 @@
 data_path: "../data"
 llm_url: "http://localhost:11434"
 llm_name: "deepseek-r1:1.5b"
-embedding_model: "BAAI/bge-small-en"
+#embedding_model: "BAAI/bge-small-en"
+embedding_model: "intfloat/multilingual-e5-large"
 qdrant_url: "http://localhost:6333"
-collection_name: "prueba-20-03"
+collection_name: "corpus-becas-sab-29-10-00"
 chunk_size: 1024
+#chunk_overlap: 1

@@ -24,7 +24,7 @@ class Response(BaseModel):
 
 
 
-llm = Ollama(model=config["llm_name"], url=config["llm_url"])
+llm = Ollama(model=config["llm_name"], url=config["llm_url"], request_timeout=300.0)
 rag = RAG(config_file=config, llm=llm)
 index = rag.qdrant_index()
 
