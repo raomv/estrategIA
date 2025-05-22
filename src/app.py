@@ -6,6 +6,7 @@ from pydantic import BaseModel, Field
 import yaml
 from llama_index.llms.ollama import Ollama
 from rag import RAG
+from model_comparison import compare_models, CompareRequest
 
 
 config_file = "config.yml"
@@ -78,3 +79,31 @@ async def process_chat(request: ChatRequest):
         return {"response": ai_response}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error al procesar el mensaje: {str(e)}")
+
+# Añadir este nuevo endpoint (sin modificar ninguno existente)
+@app.post("/compare-models")
+async def api_compare_models(request: CompareRequest):
+    """Compara respuestas de múltiples modelos para una misma consulta."""
+    try:
+        result = compare_models(request, config_file, a)
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error al comparar modelos: {str(e)}")
+
+# Endpoint para obtener modelos disponibles
+@app.get("/api/models")
+def get_models():
+    try:
+        from model_comparison import get_available_models
+        models = get_available_models(config)
+        default_model = config["llm_name"]
+        return {
+            "models": models,
+            "default_model": default_model
+        }
+    except Exception as e:
+        # Fallback en caso de error
+        return {
+            "models": [config["llm_name"]],
+            "default_model": config["llm_name"]
+        }
