@@ -107,3 +107,81 @@ def get_models():
             "models": [config["llm_name"]],
             "default_model": config["llm_name"]
         }
+
+# Nuevos endpoints para gestión de colecciones
+@app.get("/api/collections")
+def get_collections():
+    """Obtiene la lista de colecciones disponibles en Qdrant."""
+    try:
+        from qdrant_client import QdrantClient
+        
+        client = QdrantClient(url=config["qdrant_url"])
+        collections = client.get_collections().collections
+        collection_names = [collection.name for collection in collections]
+        
+        return {
+            "collections": collection_names,
+            "current": config["collection_name"]
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error al obtener colecciones: {str(e)}")
+
+@app.post("/api/collections")
+def create_collection(request: dict):
+    """Crea una nueva colección en Qdrant."""
+    try:
+        name = request.get("name")
+        if not name:
+            raise HTTPException(status_code=400, detail="Nombre de colección requerido")
+            
+        from qdrant_client import QdrantClient
+        from qdrant_client.models import VectorParams, Distance
+        
+        client = QdrantClient(url=config["qdrant_url"])
+        
+        # Obtener dimensiones de embeddings según el modelo
+        embedding_model = config["embedding_model"]
+        # Puedes tener un diccionario de dimensiones por modelo o usar una API
+        dimensions = 1024  # Ajustar según el modelo real
+        
+        client.create_collection(
+            collection_name=name,
+            vectors_config=VectorParams(size=dimensions, distance=Distance.COSINE)
+        )
+        
+        return {"message": f"Colección '{name}' creada correctamente"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error al crear colección: {str(e)}")
+
+@app.post("/api/documents/process")
+async def process_documents(request: dict):
+    """Procesa documentos y los carga en una colección específica."""
+    try:
+        collection = request.get("collection")
+        directory = request.get("directory")
+        chunk_size = request.get("chunk_size", config["chunk_size"])
+        
+        if not collection or not directory:
+            raise HTTPException(status_code=400, detail="Colección y directorio requeridos")
+            
+        # Llamada asíncrona al procesador de documentos
+        import subprocess
+        import os
+        
+        process = subprocess.Popen([
+            "python", "-m", "src.process_documents",
+            "--directory", directory,
+            "--collection", collection,
+            "--chunk_size", str(chunk_size)
+        ], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        
+        # Puedes devolver inmediatamente un ID de trabajo para consultar el estado después
+        return {"job_id": str(process.pid), "message": "Procesamiento iniciado"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error al procesar documentos: {str(e)}")
+
+@app.get("/api/documents/status/{job_id}")
+def check_processing_status(job_id: str):
+    """Verifica el estado de un trabajo de procesamiento."""
+    # Implementar lógica para verificar el estado
+    # ...
