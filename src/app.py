@@ -28,6 +28,8 @@ class Response(BaseModel):
 # Nueva clase para la solicitud de chat
 class ChatRequest(BaseModel):
     message: str
+    model: Optional[str] = None  # Añadir campo opcional para el modelo
+    collection: Optional[str] = None  # Añadir campo opcional para la colección
 
 
 llm = Ollama(model=config["llm_name"], url=config["llm_url"], request_timeout=300.0)
@@ -66,17 +68,38 @@ def search(query: Query):
 @app.post("/chat")
 async def process_chat(request: ChatRequest):
     try:
+        # Usar el modelo especificado o el por defecto
+        selected_model = request.model or config["llm_name"]
+        
+        # Usar la colección especificada o la por defecto
+        selected_collection = request.collection or config["collection_name"]
+        
+        # Crear LLM con el modelo seleccionado
+        llm_for_query = Ollama(model=selected_model, url=config["llm_url"], request_timeout=300.0)
+        
+        # Crear configuración temporal con la colección seleccionada
+        temp_config = config.copy()
+        temp_config["collection_name"] = selected_collection
+        
+        # Crear RAG temporal con el modelo y colección seleccionados
+        temp_rag = RAG(config_file=temp_config, llm=llm_for_query)
+        temp_index = temp_rag.qdrant_index()
+        
         # Crear una consulta usando el mensaje del chat
         query = Query(query=request.message)
         
-        # Utilizar tu motor de búsqueda existente
-        query_engine = index.as_query_engine(similarity_top_k=1, response_mode="tree_summarize", verbose=True)
+        # Utilizar el motor de búsqueda con el modelo y colección seleccionados
+        query_engine = temp_index.as_query_engine(similarity_top_k=1, response_mode="tree_summarize", verbose=True)
         response = query_engine.query(request.message + a)
         
         # Formatear respuesta para el frontend
         ai_response = str(response).strip()
         
-        return {"response": ai_response}
+        return {
+            "response": ai_response, 
+            "model_used": selected_model,
+            "collection_used": selected_collection
+        }
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error al procesar el mensaje: {str(e)}")
 
