@@ -1,5 +1,6 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware  # Añadir esta importación
+from fastapi.responses import JSONResponse
 from typing import Optional, List
 import ollama
 from pydantic import BaseModel, Field
@@ -7,7 +8,7 @@ import yaml
 from llama_index.llms.ollama import Ollama
 from rag import RAG
 from model_comparison import compare_models, CompareRequest
-
+import logging
 
 config_file = "config.yml"
 
@@ -31,6 +32,13 @@ class ChatRequest(BaseModel):
     model: Optional[str] = None  # Añadir campo opcional para el modelo
     collection: Optional[str] = None  # Añadir campo opcional para la colección
 
+
+# Configurar logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
 
 llm = Ollama(model=config["llm_name"], url=config["llm_url"], request_timeout=300.0)
 rag = RAG(config_file=config, llm=llm)
@@ -63,6 +71,19 @@ def search(query: Query):
         search_result=str(response).strip(), source=[response.metadata[k]["file_path"] for k in response.metadata.keys()][0]
     )
     return response_object
+
+# Añadir manejador de excepciones global
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    logger.error(f"Error no manejado en {request.url}: {str(exc)}", exc_info=True)
+    return JSONResponse(
+        status_code=500,
+        content={
+            "detail": f"Error interno del servidor: {str(exc)}",
+            "type": "internal_error",
+            "path": str(request.url)
+        }
+    )
 
 # Nuevo endpoint para el chat que usará tu sistema RAG existente
 @app.post("/chat")
