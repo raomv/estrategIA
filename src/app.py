@@ -1,3 +1,11 @@
+# ===== CONFIGURACIÓN AUTOMÁTICA DE CACHE =====
+from cache_manager import initialize_cache, get_cache_manager
+
+# Configurar cache antes de importar FastEmbed
+cache_info = initialize_cache()
+cache_manager = get_cache_manager()
+
+# ===== RESTO DE IMPORTS =====
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -35,10 +43,6 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-llm = Ollama(model=config["llm_name"], url=config["llm_url"], request_timeout=300.0)
-rag = RAG(config_file=config, llm=llm)
-index = rag.qdrant_index()
-
 # Cache para las instancias RAG por modelo y colección
 rag_cache = {}
 
@@ -49,6 +53,9 @@ def get_or_create_rag(model_name: str, collection_name: str):
     if cache_key not in rag_cache:
         logger.info(f"Creando nueva instancia RAG para {model_name} - {collection_name}")
         
+        # Asegurar que el modelo de embeddings esté listo y configurado
+        cache_manager.ensure_embedding_model_ready(config)
+        
         # Crear LLM
         llm_instance = Ollama(model=model_name, url=config["llm_url"], request_timeout=300.0)
         
@@ -56,7 +63,7 @@ def get_or_create_rag(model_name: str, collection_name: str):
         temp_config = config.copy()
         temp_config["collection_name"] = collection_name
         
-        # Crear RAG
+        # Crear RAG sin embed_model - usará automáticamente el cache configurado
         rag_instance = RAG(config_file=temp_config, llm=llm_instance)
         index_instance = rag_instance.qdrant_index()
         

@@ -1,3 +1,11 @@
+# ===== CONFIGURACIÓN AUTOMÁTICA DE CACHE =====
+from cache_manager import initialize_cache, get_cache_manager
+
+# Configurar cache antes de importar FastEmbed
+cache_info = initialize_cache()
+cache_manager = get_cache_manager()
+
+# ===== RESTO DE IMPORTS =====
 from llama_index.core import StorageContext, VectorStoreIndex
 from llama_index.core.settings import Settings
 from llama_index.core import SimpleDirectoryReader
@@ -45,6 +53,8 @@ class Data:
 
     def ingest(self, embedder, llm, extension=".txt"):
         print(f"Indexing data with extension '{extension}'...")
+        print(f"📁 Cache configurado en: {cache_info['fastembed_cache']}")
+        
         data_path = self.config["data_path"]
         print(f"Reading files from directory: {data_path}")
         files_to_index = [
@@ -119,7 +129,10 @@ if __name__ == "__main__":
     if args.ingest:
         print("Loading Embedder...")
         print("Initializing FastEmbedEmbedding model. This may take a while if it's the first time...")
-        embed_model = FastEmbedEmbedding(model_name=config["embedding_model"])
+        
+        # Usar el cache manager para crear el modelo de embeddings
+        embed_model = cache_manager.create_embedding_model(config)
         print("FastEmbedEmbedding model loaded successfully.")
+        
         llm = Ollama(model=config["llm_name"], base_url=config["llm_url"])
         data.ingest(embedder=embed_model, llm=llm, extension=args.extension)
