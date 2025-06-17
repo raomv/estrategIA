@@ -6,7 +6,7 @@ cache_info = initialize_cache()
 cache_manager = get_cache_manager()
 
 # ===== RESTO DE IMPORTS =====
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, HTTPException, Request, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from typing import Optional, List
@@ -17,6 +17,9 @@ from llama_index.llms.ollama import Ollama
 from rag import RAG
 from model_comparison import compare_models, CompareRequest
 import logging
+import tempfile
+import os
+import shutil
 
 config_file = "config.yml"
 
@@ -281,3 +284,71 @@ def get_status():
         "cache_size": len(rag_cache),
         "memory_usage": "Disponible en futuras versiones"
     }
+
+@app.post("/api/documents/upload")
+async def upload_documents(
+    files: List[UploadFile] = File(...),
+    collection: str = Form(...),
+    chunk_size: int = Form(default=1024)
+):
+    """Sube archivos y los procesa usando docling + Qdrant."""
+    try:
+        if not files:
+            raise HTTPException(status_code=400, detail="No se enviaron archivos")
+        
+        # Crear directorio temporal
+        temp_dir = tempfile.mkdtemp()
+        uploaded_filenames = []
+        
+        try:
+            # Guardar archivos en directorio temporal
+            for file in files:
+                if file.filename:
+                    file_path = os.path.join(temp_dir, file.filename)
+                    with open(file_path, "wb") as buffer:
+                        shutil.copyfileobj(file.file, buffer)
+                    uploaded_filenames.append(file.filename)
+                    print(f"📁 Archivo guardado: {file.filename}")
+            
+            print(f"🔄 Iniciando procesamiento de {len(uploaded_filenames)} archivos...")
+            
+            # Ejecutar el script process_documents.py directamente con python
+            import subprocess
+            import sys
+            
+            # Obtener el path del script process_documents.py
+            script_path = os.path.join(os.path.dirname(__file__), "process_documents.py")
+            
+            result = subprocess.run([
+                sys.executable,  # Usar el mismo Python que está ejecutando la app
+                script_path,
+                "--directory", temp_dir,
+                "--collection", collection,
+                "--chunk_size", str(chunk_size)
+            ], capture_output=True, text=True, timeout=300)  # 5 minutos timeout
+            
+            if result.returncode == 0:
+                print("✅ Procesamiento completado exitosamente")
+                print(f"Output: {result.stdout}")
+                return {
+                    "message": f"Archivos procesados correctamente: {', '.join(uploaded_filenames)}",
+                    "files_processed": uploaded_filenames,
+                    "collection": collection,
+                    "status": "completed"
+                }
+            else:
+                print(f"❌ Error en procesamiento: {result.stderr}")
+                print(f"Return code: {result.returncode}")
+                print(f"Stdout: {result.stdout}")
+                raise Exception(f"Error en procesamiento: {result.stderr}")
+            
+        finally:
+            # Limpiar directorio temporal
+            print(f"🧹 Limpiando directorio temporal: {temp_dir}")
+            shutil.rmtree(temp_dir, ignore_errors=True)
+            
+    except subprocess.TimeoutExpired:
+        raise HTTPException(status_code=408, detail="El procesamiento tardó demasiado tiempo")
+    except Exception as e:
+        print(f"💥 Error en upload_documents: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error al procesar archivos: {str(e)}")
