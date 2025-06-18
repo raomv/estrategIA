@@ -126,8 +126,16 @@ def compare_models(request: CompareRequest, config_file: str, prompt_suffix: str
         results = {}
         metrics = {}
         
-        original_global_llm = LlamaSettings.llm if hasattr(LlamaSettings, 'llm') else None # Guardar LLM global si existe
-
+        # CAMBIO: Verificar si LlamaSettings.llm existe antes de acceder
+        try:
+            original_global_llm = LlamaSettings.llm
+        except ValueError:
+            # Si no hay LLM configurado, establecer None
+            original_global_llm = None
+            # Configurar un LLM temporal para evitar errores
+            first_model = models_to_compare[0]
+            LlamaSettings.llm = Ollama(model=first_model, url=config["llm_url"])
+        
         for model_name in models_to_compare:
             try:
                 print(f"📊 Iniciando evaluación para {model_name} con RAGAS...")
