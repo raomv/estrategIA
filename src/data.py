@@ -51,8 +51,14 @@ class Data:
             except Exception as e:
                 print(f"[ERROR] Falló la conversión de '{pdf_file}': {e}")
 
-    def ingest(self, embedder, llm, extension=".txt"):
-        print(f"Indexing data with extension '{extension}'...")
+    def ingest(self, embedder, llm, extension=".txt", collection_name=None, chunk_size=None):
+        if not collection_name:
+            raise ValueError("collection_name es obligatorio - no se puede usar un valor por defecto")
+        
+        if not chunk_size:
+            chunk_size = 1024  # Solo este valor puede tener un fallback técnico
+        
+        print(f"Indexing data with extension '{extension}' to collection '{collection_name}'...")
         print(f"📁 Cache configurado en: {cache_info['fastembed_cache']}")
         
         data_path = self.config["data_path"]
@@ -78,20 +84,20 @@ class Data:
         print("Connecting to Qdrant...")
         client = qdrant_client.QdrantClient(url=self.config["qdrant_url"])
         qdrant_vector_store = QdrantVectorStore(
-            client=client, collection_name=self.config["collection_name"]
+            client=client, collection_name=collection_name
         )
         storage_context = StorageContext.from_defaults(vector_store=qdrant_vector_store)
 
         print("Configuring global settings for embeddings and LLM...")
         Settings.embed_model = embedder
         Settings.llm = llm
-        Settings.chunk_size = self.config["chunk_size"]
+        Settings.chunk_size = chunk_size
 
         print("Indexing documents in Qdrant...")
         index = VectorStoreIndex.from_documents(
             documents, storage_context=storage_context
         )
-        print(f"Data indexed successfully to Qdrant. Collection: {self.config['collection_name']}")
+        print(f"Data indexed successfully to Qdrant. Collection: {collection_name}")
         return index
 
 
@@ -115,6 +121,24 @@ if __name__ == "__main__":
         default=".txt",
         help="File extension to index in Qdrant (default: .txt)."
     )
+    parser.add_argument(
+        "-c", "--collection",
+        type=str,
+        required=True,
+        help="Collection name in Qdrant (REQUIRED)."
+    )
+    parser.add_argument(
+        "-m", "--model",
+        type=str,
+        required=True,
+        help="LLM model name (REQUIRED)."
+    )
+    parser.add_argument(
+        "--chunk_size",
+        type=int,
+        default=1024,
+        help="Chunk size for document processing (default: 1024)."
+    )
 
     args = parser.parse_args()
     config_file = "config.yml"
@@ -134,5 +158,11 @@ if __name__ == "__main__":
         embed_model = cache_manager.create_embedding_model(config)
         print("FastEmbedEmbedding model loaded successfully.")
         
-        llm = Ollama(model=config["llm_name"], base_url=config["llm_url"])
-        data.ingest(embedder=embed_model, llm=llm, extension=args.extension)
+        llm = Ollama(model=args.model, base_url=config["llm_url"])
+        data.ingest(
+            embedder=embed_model, 
+            llm=llm, 
+            extension=args.extension,
+            collection_name=args.collection,
+            chunk_size=args.chunk_size
+        )

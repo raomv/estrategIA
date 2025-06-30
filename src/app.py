@@ -134,9 +134,14 @@ async def process_chat(request: ChatRequest):
         logger.info(f"=== INICIO CONSULTA ===")
         logger.info(f"Mensaje: {request.message[:100]}...")
         
-        # Usar el modelo especificado o el por defecto
-        selected_model = request.model or config["llm_name"]
-        selected_collection = request.collection or config["collection_name"]
+        # Validar que se proporcionen modelo y colección
+        if not request.model:
+            raise HTTPException(status_code=400, detail="El modelo LLM es obligatorio")
+        if not request.collection:
+            raise HTTPException(status_code=400, detail="La colección es obligatoria")
+        
+        selected_model = request.model
+        selected_collection = request.collection
         
         logger.info(f"Modelo: {selected_model}, Colección: {selected_collection}")
         
@@ -166,6 +171,8 @@ async def process_chat(request: ChatRequest):
         logger.info("=== FIN CONSULTA EXITOSA ===")
         return result
         
+    except HTTPException:
+        raise  # Re-lanzar HTTPException tal como está
     except Exception as e:
         logger.error(f"=== ERROR EN CONSULTA ===")
         logger.error(f"Error: {str(e)}", exc_info=True)
@@ -185,15 +192,15 @@ def get_models():
     try:
         from model_comparison import get_available_models
         models = get_available_models(config)
-        default_model = config["llm_name"]
         return {
             "models": models,
-            "default_model": default_model
+            "default_model": None  # Sin valor por defecto
         }
     except Exception as e:
+        # Si falla, devolver lista vacía
         return {
-            "models": [config["llm_name"]],
-            "default_model": config["llm_name"]
+            "models": [],
+            "default_model": None
         }
 
 @app.get("/api/collections")
@@ -208,7 +215,7 @@ def get_collections():
         
         return {
             "collections": collection_names,
-            "current": config["collection_name"]
+            "current": None  # Sin valor por defecto
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error al obtener colecciones: {str(e)}")

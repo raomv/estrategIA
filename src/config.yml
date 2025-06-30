@@ -1,10 +1,4 @@
 data_path: "../data"
 llm_url: "http://localhost:11434"
-llm_name: "deepseek-r1:1.5b"
-#llm_name: "qwen2.5:1.5b"
-#embedding_model: "BAAI/bge-small-en"
-embedding_model: "intfloat/multilingual-e5-large"
 qdrant_url: "http://localhost:6333"
-collection_name: "tfm-1"
-chunk_size: 1024
-#chunk_overlap: 1
+embedding_model: "intfloat/multilingual-e5-large"
