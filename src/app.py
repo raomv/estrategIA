@@ -38,6 +38,7 @@ class ChatRequest(BaseModel):
     message: str
     model: Optional[str] = None
     collection: Optional[str] = None
+    chunk_size: Optional[int] = None  # Nuevo campo opcional
 
 # Configurar logging
 logging.basicConfig(
@@ -49,22 +50,23 @@ logger = logging.getLogger(__name__)
 # Cache para las instancias RAG por modelo y colección
 rag_cache = {}
 
-def get_or_create_rag(model_name: str, collection_name: str):
+def get_or_create_rag(model_name: str, collection_name: str, chunk_size: int = 1024):
     """Obtiene una instancia RAG del cache o crea una nueva si no existe."""
-    cache_key = f"{model_name}_{collection_name}"
+    cache_key = f"{model_name}_{collection_name}_{chunk_size}"  # Incluir chunk_size en cache
     
     if cache_key not in rag_cache:
-        logger.info(f"Creando nueva instancia RAG para {model_name} - {collection_name}")
-        
-        # Asegurar que el modelo de embeddings esté listo y configurado
-        cache_manager.ensure_embedding_model_ready(config)
-        
-        # Crear LLM
-        llm_instance = Ollama(model=model_name, url=config["llm_url"], request_timeout=300.0)
+        logger.info(f"Creando nueva instancia RAG para {model_name} - {collection_name} - chunk_size: {chunk_size}")
         
         # Crear configuración temporal
         temp_config = config.copy()
         temp_config["collection_name"] = collection_name
+        temp_config["chunk_size"] = chunk_size  # Configurar dinámicamente
+        
+        # Asegurar que el modelo de embeddings esté listo y configurado
+        cache_manager.ensure_embedding_model_ready(temp_config)
+        
+        # Crear LLM
+        llm_instance = Ollama(model=model_name, url=config["llm_url"], request_timeout=300.0)
         
         # Crear RAG sin embed_model - usará automáticamente el cache configurado
         rag_instance = RAG(config_file=temp_config, llm=llm_instance)
@@ -142,11 +144,12 @@ async def process_chat(request: ChatRequest):
         
         selected_model = request.model
         selected_collection = request.collection
+        selected_chunk_size = request.chunk_size or 1024  # Valor por defecto
         
         logger.info(f"Modelo: {selected_model}, Colección: {selected_collection}")
         
         # Obtener o crear instancia RAG cacheada
-        rag_instances = get_or_create_rag(selected_model, selected_collection)
+        rag_instances = get_or_create_rag(selected_model, selected_collection, selected_chunk_size)
         
         logger.info("Ejecutando consulta...")
         query_engine = rag_instances['index'].as_query_engine(
