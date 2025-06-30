@@ -16,6 +16,7 @@ import yaml
 from llama_index.llms.ollama import Ollama
 from rag import RAG
 from model_comparison import compare_models, CompareRequest
+from llama_index.core.settings import Settings
 import logging
 import tempfile
 import os
@@ -185,8 +186,37 @@ async def process_chat(request: ChatRequest):
 async def api_compare_models(request: CompareRequest):
     """Compara respuestas de múltiples modelos para una misma consulta."""
     try:
-        result = compare_models(request, config_file, a)
-        return result
+        models_to_compare = request.models  # Obtener la lista de modelos del request
+        user_question = request.query  # Suponiendo que la pregunta del usuario está en 'query'
+        
+        # Validar que se proporcionen al menos dos modelos
+        if not models_to_compare or len(models_to_compare) < 2:
+            raise HTTPException(status_code=400, detail="Se requieren al menos dos modelos para la comparación")
+        
+        # Obtener configuración del modelo de embeddings
+        embed_model = config["embedding_model"]
+        
+        results = {}
+        
+        # Para cada modelo que quieres comparar:
+        for model_name in models_to_compare:
+            # ✅ CONFIGURAR EL LLM ANTES DE CREAR EL QUERY ENGINE
+            llm = Ollama(model=model_name, base_url=config["llm_url"])
+            Settings.llm = llm  # ← ESTO ES CRUCIAL
+            Settings.embed_model = embed_model
+            
+            # Ahora crear el query engine
+            rag_instances = get_or_create_rag(model_name, request.collection)
+            query_engine = rag_instances['index'].as_query_engine()
+            
+            # Hacer la consulta...
+            response = query_engine.query(user_question + a)
+            results[model_name] = str(response).strip()
+        
+        return {
+            "query": user_question,
+            "results": results
+        }
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error al comparar modelos: {str(e)}")
 
