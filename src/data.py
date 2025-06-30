@@ -51,9 +51,10 @@ class Data:
             except Exception as e:
                 print(f"[ERROR] Falló la conversión de '{pdf_file}': {e}")
 
-    def ingest(self, embedder, llm, extension=".txt", collection_name=None, chunk_size=None):
+    def ingest(self, embedder, extension=".txt", collection_name=None, chunk_size=None):
+        """Indexa documentos - NO necesita LLM, solo embeddings."""
         if not collection_name:
-            raise ValueError("collection_name es obligatorio - no se puede usar un valor por defecto")
+            raise ValueError("collection_name es obligatorio")
         
         if not chunk_size:
             chunk_size = 1024  # Solo este valor puede tener un fallback técnico
@@ -88,9 +89,9 @@ class Data:
         )
         storage_context = StorageContext.from_defaults(vector_store=qdrant_vector_store)
 
-        print("Configuring global settings for embeddings and LLM...")
-        Settings.embed_model = embedder
-        Settings.llm = llm
+        print("Configuring global settings for embeddings...")
+        Settings.embed_model = embedder  # Solo embeddings
+        # Settings.llm = llm  # ❌ ELIMINAR - NO necesario para indexación
         Settings.chunk_size = chunk_size
 
         print("Indexing documents in Qdrant...")
