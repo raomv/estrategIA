@@ -186,38 +186,66 @@ async def process_chat(request: ChatRequest):
 async def api_compare_models(request: CompareRequest):
     """Compara respuestas de múltiples modelos para una misma consulta."""
     try:
-        models_to_compare = request.models  # Obtener la lista de modelos del request
-        user_question = request.query  # Suponiendo que la pregunta del usuario está en 'query'
+        logger.info("=== INICIANDO COMPARACIÓN DE MODELOS ===")
         
-        # Validar que se proporcionen al menos dos modelos
-        if not models_to_compare or len(models_to_compare) < 2:
-            raise HTTPException(status_code=400, detail="Se requieren al menos dos modelos para la comparación")
+        # ✅ Acceder correctamente a los campos del request
+        models_to_compare = request.models
+        user_question = request.message  # ← Cambiar de 'query' a 'message'
+        collection_name = request.collection  # ← Agregar collection
         
-        # Obtener configuración del modelo de embeddings
-        embed_model = config["embedding_model"]
+        logger.info(f"Consulta: {user_question[:100]}...")
+        logger.info(f"Modelos seleccionados: {models_to_compare}")
+        logger.info(f"Colección: {collection_name}")
+        
+        # Validaciones
+        if not models_to_compare or len(models_to_compare) < 1:
+            raise HTTPException(status_code=400, detail="Se requiere al menos un modelo para la comparación")
+        
+        if not collection_name:
+            raise HTTPException(status_code=400, detail="La colección es obligatoria")
+        
+        if not user_question.strip():
+            raise HTTPException(status_code=400, detail="La consulta no puede estar vacía")
         
         results = {}
         
-        # Para cada modelo que quieres comparar:
+        # ✅ Para cada modelo crear RAG instance correctamente
         for model_name in models_to_compare:
-            # ✅ CONFIGURAR EL LLM ANTES DE CREAR EL QUERY ENGINE
-            llm = Ollama(model=model_name, base_url=config["llm_url"])
-            Settings.llm = llm  # ← ESTO ES CRUCIAL
-            Settings.embed_model = embed_model
-            
-            # Ahora crear el query engine
-            rag_instances = get_or_create_rag(model_name, request.collection)
-            query_engine = rag_instances['index'].as_query_engine()
-            
-            # Hacer la consulta...
-            response = query_engine.query(user_question + a)
-            results[model_name] = str(response).strip()
+            try:
+                logger.info(f"⚙️ Procesando modelo: {model_name}")
+                
+                # Usar la función existente get_or_create_rag que maneja toda la configuración
+                rag_instances = get_or_create_rag(model_name, collection_name, 1024)
+                
+                # Crear query engine y hacer consulta
+                query_engine = rag_instances['index'].as_query_engine(
+                    similarity_top_k=1,
+                    response_mode="tree_summarize",
+                    verbose=True
+                )
+                
+                # Hacer la consulta
+                response = query_engine.query(user_question + a)
+                results[model_name] = str(response).strip()
+                
+                logger.info(f"✅ Respuesta generada para {model_name}")
+                
+            except Exception as e:
+                logger.error(f"❌ Error procesando modelo {model_name}: {str(e)}")
+                results[model_name] = f"Error: {str(e)}"
+        
+        logger.info("=== COMPARACIÓN COMPLETADA ===")
         
         return {
             "query": user_question,
-            "results": results
+            "results": results,
+            "metrics": None  # Sin métricas por ahora
         }
+        
+    except HTTPException:
+        raise
     except Exception as e:
+        logger.error(f"Error general en comparación: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Error al comparar modelos: {str(e)}")
 
 @app.get("/api/models")

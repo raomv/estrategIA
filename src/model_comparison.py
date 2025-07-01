@@ -36,8 +36,9 @@ from llama_index.core.settings import Settings as LlamaSettings
 cache_manager = get_cache_manager()
 
 class CompareRequest(BaseModel):
-    message: str
-    models: Optional[List[str]] = None
+    message: str  
+    models: List[str]
+    collection: str  
 
 def get_available_models(config):
     """Obtiene la lista de modelos disponibles en Ollama."""
