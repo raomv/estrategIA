@@ -87,63 +87,54 @@ def academic_llamaindex_evaluation(request: CompareRequest, config: dict):
         embed_model = cache_manager.get_cached_embedding_model()
         LlamaSettings.embed_model = embed_model
         
-        # 2. Crear el LLM juez (solo para evaluar, no para responder)
+        # 2. Crear el LLM juez
         judge_llm = Ollama(model=judge_model_name, url=config["llm_url"], request_timeout=300.0)
         print(f"🏅 Juez configurado: {judge_model_name}")
         
-        # 3. Crear evaluadores de LlamaIndex disponibles (corregido)
+        # 3. Crear evaluadores de LlamaIndex
         evaluators = {}
-        
         try:
-            # Evaluadores que requieren LLM
             evaluators["faithfulness"] = FaithfulnessEvaluator(llm=judge_llm)
             evaluators["relevancy"] = RelevancyEvaluator(llm=judge_llm)
             evaluators["correctness"] = CorrectnessEvaluator(llm=judge_llm)
-            print("✅ Evaluadores con LLM creados: faithfulness, relevancy, correctness")
+            print("✅ Evaluadores creados: faithfulness, relevancy, correctness")
         except Exception as e:
-            print(f"❌ Error creando evaluadores con LLM: {e}")
+            print(f"❌ Error creando evaluadores: {e}")
+            return {"error": f"Error creando evaluadores: {e}", "results": {}, "metrics": {}}
         
-        try:
-            # SemanticSimilarityEvaluator no requiere LLM
-            evaluators["semantic_similarity"] = SemanticSimilarityEvaluator()
-            print("✅ SemanticSimilarityEvaluator creado")
-        except Exception as e:
-            print(f"❌ Error creando SemanticSimilarityEvaluator: {e}")
+        # ✅ SIMPLIFICADO: Conectar al índice existente sin chunk_size
+        print(f"🔍 Conectando a colección existente: {collection_name}")
         
-        # Remover GuidelineEvaluator si causa problemas
-        try:
-            # GuidelineEvaluator requiere guidelines específicas
-            evaluators["guideline"] = GuidelineEvaluator(llm=judge_llm, guidelines="Answer should be helpful and accurate")
-            print("✅ GuidelineEvaluator creado")
-        except Exception as e:
-            print(f"⚠️ GuidelineEvaluator no disponible: {e}")
+        # Crear configuración temporal para conexión
+        temp_config = config.copy()
+        temp_config["collection_name"] = collection_name
         
-        print(f"📊 Evaluadores creados: {list(evaluators.keys())}")
+        # Usar el primer modelo para la conexión inicial al índice
+        initial_llm = Ollama(model=models_to_compare[0], url=config["llm_url"], request_timeout=300.0)
+        
+        # Crear instancia RAG (ahora sin problemas de chunk_size)
+        rag_instance = RAG(config_file=temp_config, llm=initial_llm)
+        shared_index = rag_instance.qdrant_index()
+        
+        if shared_index is None:
+            raise ValueError(f"No se pudo conectar a la colección {collection_name}")
+        
+        print(f"✅ Conectado a índice existente: {collection_name}")
         
         results = {}
         metrics = {}
         
-        # 4. Para cada modelo: generar respuesta y evaluarla con el juez
+        # 4. Para cada modelo: solo cambiar LLM, reutilizar índice
         for model_name in models_to_compare:
             try:
                 print(f"\n🔄 Procesando modelo: {model_name}")
                 
-                # Crear RAG para el modelo específico
-                temp_config = config.copy()
-                temp_config["collection_name"] = collection_name
-                
+                # Crear LLM específico para este modelo
                 model_llm = Ollama(model=model_name, url=config["llm_url"], request_timeout=300.0)
-                LlamaSettings.llm = model_llm
                 
-                # Crear RAG instance
-                from rag import RAG
-                rag_instance = RAG(config_file=temp_config, llm=model_llm)
-                index = rag_instance.qdrant_index()
-                
-                if index is None:
-                    raise ValueError(f"No se pudo crear índice para {model_name}")
-                
-                query_engine = index.as_query_engine(
+                # ✅ CLAVE: Reutilizar índice, cambiar solo LLM
+                query_engine = shared_index.as_query_engine(
+                    llm=model_llm,  # Solo cambiar el LLM
                     similarity_top_k=config.get("similarity_top_k", 3),
                     response_mode="tree_summarize"
                 )
@@ -154,25 +145,16 @@ def academic_llamaindex_evaluation(request: CompareRequest, config: dict):
                 results[model_name] = str(response).strip()
                 print(f"✅ Respuesta generada para {model_name}")
                 
-                # El juez evalúa esta respuesta usando TODAS las métricas
+                # El juez evalúa esta respuesta usando las métricas académicas
                 model_metrics = {}
                 for metric_name, evaluator in evaluators.items():
                     try:
                         print(f"   📊 Evaluando {metric_name}...")
                         
-                        # Diferentes métodos de evaluación según el tipo
-                        if metric_name == "semantic_similarity":
-                            # SemanticSimilarityEvaluator necesita parámetros diferentes
-                            eval_result = evaluator.evaluate_response(
-                                response=str(response),
-                                reference="Expected response"  # Placeholder
-                            )
-                        else:
-                            # Otros evaluadores usan query + response
-                            eval_result = evaluator.evaluate_response(
-                                query=user_question, 
-                                response=response
-                            )
+                        eval_result = evaluator.evaluate_response(
+                            query=user_question, 
+                            response=response
+                        )
                         
                         model_metrics[metric_name] = {
                             "score": eval_result.score if hasattr(eval_result, 'score') else (1.0 if eval_result.passing else 0.0),

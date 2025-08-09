@@ -20,7 +20,6 @@ class RAG:
         embed_model = FastEmbedEmbedding(model_name=self.config['embedding_model'])
         return embed_model
 
-
     def qdrant_index(self):
         client = qdrant_client.QdrantClient(url=self.config["qdrant_url"])
         qdrant_vector_store = QdrantVectorStore(
@@ -30,9 +29,8 @@ class RAG:
         # Configuración global usando Settings
         Settings.llm = self.llm  # Configura el LLM
         Settings.embed_model = self.load_embedder()  # Configura el modelo de embeddings
-        Settings.chunk_size = self.config["chunk_size"]  # Configura el tamaño del chunk
 
-        # Crear el índice sin ServiceContext
+        # Crear el índice conectándose a la colección existente
         index = VectorStoreIndex.from_vector_store(
             vector_store=qdrant_vector_store
         )
