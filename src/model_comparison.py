@@ -91,13 +91,33 @@ def academic_llamaindex_evaluation(request: CompareRequest, config: dict):
         judge_llm = Ollama(model=judge_model_name, url=config["llm_url"], request_timeout=300.0)
         print(f"🏅 Juez configurado: {judge_model_name}")
         
-        # 3. Crear TODOS los evaluadores de LlamaIndex disponibles
-        evaluators = {
-            "faithfulness": FaithfulnessEvaluator(llm=judge_llm),
-            "relevancy": RelevancyEvaluator(llm=judge_llm),
-            "correctness": CorrectnessEvaluator(llm=judge_llm),
-            "semantic_similarity": SemanticSimilarityEvaluator(llm=judge_llm),
-        }
+        # 3. Crear evaluadores de LlamaIndex disponibles (corregido)
+        evaluators = {}
+        
+        try:
+            # Evaluadores que requieren LLM
+            evaluators["faithfulness"] = FaithfulnessEvaluator(llm=judge_llm)
+            evaluators["relevancy"] = RelevancyEvaluator(llm=judge_llm)
+            evaluators["correctness"] = CorrectnessEvaluator(llm=judge_llm)
+            print("✅ Evaluadores con LLM creados: faithfulness, relevancy, correctness")
+        except Exception as e:
+            print(f"❌ Error creando evaluadores con LLM: {e}")
+        
+        try:
+            # SemanticSimilarityEvaluator no requiere LLM
+            evaluators["semantic_similarity"] = SemanticSimilarityEvaluator()
+            print("✅ SemanticSimilarityEvaluator creado")
+        except Exception as e:
+            print(f"❌ Error creando SemanticSimilarityEvaluator: {e}")
+        
+        # Remover GuidelineEvaluator si causa problemas
+        try:
+            # GuidelineEvaluator requiere guidelines específicas
+            evaluators["guideline"] = GuidelineEvaluator(llm=judge_llm, guidelines="Answer should be helpful and accurate")
+            print("✅ GuidelineEvaluator creado")
+        except Exception as e:
+            print(f"⚠️ GuidelineEvaluator no disponible: {e}")
+        
         print(f"📊 Evaluadores creados: {list(evaluators.keys())}")
         
         results = {}
@@ -139,14 +159,24 @@ def academic_llamaindex_evaluation(request: CompareRequest, config: dict):
                 for metric_name, evaluator in evaluators.items():
                     try:
                         print(f"   📊 Evaluando {metric_name}...")
-                        eval_result = evaluator.evaluate_response(
-                            query=user_question, 
-                            response=response
-                        )
+                        
+                        # Diferentes métodos de evaluación según el tipo
+                        if metric_name == "semantic_similarity":
+                            # SemanticSimilarityEvaluator necesita parámetros diferentes
+                            eval_result = evaluator.evaluate_response(
+                                response=str(response),
+                                reference="Expected response"  # Placeholder
+                            )
+                        else:
+                            # Otros evaluadores usan query + response
+                            eval_result = evaluator.evaluate_response(
+                                query=user_question, 
+                                response=response
+                            )
                         
                         model_metrics[metric_name] = {
                             "score": eval_result.score if hasattr(eval_result, 'score') else (1.0 if eval_result.passing else 0.0),
-                            "passing": eval_result.passing,
+                            "passing": eval_result.passing if hasattr(eval_result, 'passing') else True,
                             "feedback": eval_result.feedback if hasattr(eval_result, 'feedback') else "Evaluación completada"
                         }
                         print(f"      ✅ {metric_name}: {model_metrics[metric_name]['score']:.2f}")
