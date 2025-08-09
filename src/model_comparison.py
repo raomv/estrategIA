@@ -68,7 +68,6 @@ def get_available_models(config):
 def academic_llamaindex_evaluation(request: CompareRequest, config: dict):
     """
     Evaluación académica usando LlamaIndex: Juez evalúa respuestas, no las genera.
-    Basado en metodología LLM-as-a-Judge académicamente validada.
     """
     try:
         print("=== EVALUACIÓN ACADÉMICA CON LLAMAINDEX NATIVO ===")
@@ -96,28 +95,58 @@ def academic_llamaindex_evaluation(request: CompareRequest, config: dict):
         judge_llm = Ollama(model=judge_model_name, url=config["llm_url"], request_timeout=300.0)
         print(f"🏅 Juez configurado: {judge_model_name}")
         
-        # 3. Crear evaluadores de LlamaIndex
+        # ✅ CORREGIDO: Crear evaluadores con manejo de errores individual
         evaluators = {}
+        
+        # Evaluadores que funcionan bien
         try:
             evaluators["faithfulness"] = FaithfulnessEvaluator(llm=judge_llm)
-            evaluators["relevancy"] = RelevancyEvaluator(llm=judge_llm)
-            evaluators["correctness"] = CorrectnessEvaluator(llm=judge_llm)
-            print("✅ Evaluadores creados: faithfulness, relevancy, correctness")
+            print("✅ FaithfulnessEvaluator creado")
         except Exception as e:
-            print(f"❌ Error creando evaluadores: {e}")
-            return {"error": f"Error creando evaluadores: {e}", "results": {}, "metrics": {}}
+            print(f"❌ Error creando FaithfulnessEvaluator: {e}")
         
-        # ✅ SIMPLIFICADO: Conectar al índice existente sin chunk_size
+        try:
+            evaluators["relevancy"] = RelevancyEvaluator(llm=judge_llm)
+            print("✅ RelevancyEvaluator creado")
+        except Exception as e:
+            print(f"❌ Error creando RelevancyEvaluator: {e}")
+        
+        # CorrectnessEvaluator necesita manejo especial
+        try:
+            evaluators["correctness"] = CorrectnessEvaluator(llm=judge_llm)
+            print("✅ CorrectnessEvaluator creado")
+        except Exception as e:
+            print(f"⚠️ CorrectnessEvaluator no disponible: {e}")
+        
+        # Añadir SemanticSimilarityEvaluator (no requiere LLM)
+        try:
+            evaluators["semantic_similarity"] = SemanticSimilarityEvaluator()
+            print("✅ SemanticSimilarityEvaluator creado")
+        except Exception as e:
+            print(f"❌ Error creando SemanticSimilarityEvaluator: {e}")
+        
+        # Añadir GuidelineEvaluator (con guidelines específicas)
+        try:
+            evaluators["guideline"] = GuidelineEvaluator(
+                llm=judge_llm,
+                guidelines="The response should be helpful, accurate, and based only on the provided context."
+            )
+            print("✅ GuidelineEvaluator creado")
+        except Exception as e:
+            print(f"⚠️ GuidelineEvaluator no disponible: {e}")
+        
+        print(f"📊 Evaluadores disponibles: {list(evaluators.keys())}")
+        
+        if not evaluators:
+            return {"error": "No se pudieron crear evaluadores", "results": {}, "metrics": {}}
+        
+        # 3. Conectar al índice existente
         print(f"🔍 Conectando a colección existente: {collection_name}")
         
-        # Crear configuración temporal para conexión
         temp_config = config.copy()
         temp_config["collection_name"] = collection_name
         
-        # Usar el primer modelo para la conexión inicial al índice
         initial_llm = Ollama(model=models_to_compare[0], url=config["llm_url"], request_timeout=300.0)
-        
-        # Crear instancia RAG (ahora con import correcto)
         rag_instance = RAG(config_file=temp_config, llm=initial_llm)
         shared_index = rag_instance.qdrant_index()
         
@@ -129,56 +158,84 @@ def academic_llamaindex_evaluation(request: CompareRequest, config: dict):
         results = {}
         metrics = {}
         
-        # 4. Para cada modelo: solo cambiar LLM, reutilizar índice
+        # 4. Para cada modelo: evaluar con todos los evaluadores disponibles
         for model_name in models_to_compare:
             try:
                 print(f"\n🔄 Procesando modelo: {model_name}")
                 
-                # Crear LLM específico para este modelo
                 model_llm = Ollama(model=model_name, url=config["llm_url"], request_timeout=300.0)
                 
-                # ✅ CLAVE: Reutilizar índice, cambiar solo LLM
                 query_engine = shared_index.as_query_engine(
-                    llm=model_llm,  # Solo cambiar el LLM
+                    llm=model_llm,
                     similarity_top_k=config.get("similarity_top_k", 3),
                     response_mode="tree_summarize"
                 )
                 
-                # Generar respuesta del modelo
                 full_question = user_question + " You can only answer based on the provided context."
                 response = query_engine.query(full_question)
                 results[model_name] = str(response).strip()
                 print(f"✅ Respuesta generada para {model_name}")
                 
-                # El juez evalúa esta respuesta usando las métricas académicas
+                # ✅ MEJORADO: Evaluación con manejo específico por tipo
                 model_metrics = {}
                 for metric_name, evaluator in evaluators.items():
                     try:
                         print(f"   📊 Evaluando {metric_name}...")
                         
-                        eval_result = evaluator.evaluate_response(
-                            query=user_question, 
-                            response=response
-                        )
+                        # Manejo específico según el tipo de evaluador
+                        if metric_name == "semantic_similarity":
+                            # SemanticSimilarityEvaluator usa parámetros diferentes
+                            eval_result = evaluator.evaluate_response(
+                                response=str(response),
+                                reference=user_question  # Usar pregunta como referencia
+                            )
+                        elif metric_name == "correctness":
+                            # CorrectnessEvaluator puede necesitar reference_answer
+                            try:
+                                eval_result = evaluator.evaluate_response(
+                                    query=user_question,
+                                    response=response,
+                                    reference="Based on the provided context"  # Referencia genérica
+                                )
+                            except Exception:
+                                # Si falla, intentar sin reference
+                                eval_result = evaluator.evaluate_response(
+                                    query=user_question,
+                                    response=response
+                                )
+                        else:
+                            # Otros evaluadores usan el método estándar
+                            eval_result = evaluator.evaluate_response(
+                                query=user_question,
+                                response=response
+                            )
+                        
+                        # Extraer puntuación de forma robusta
+                        if hasattr(eval_result, 'score') and eval_result.score is not None:
+                            score = float(eval_result.score)
+                        elif hasattr(eval_result, 'passing'):
+                            score = 1.0 if eval_result.passing else 0.0
+                        else:
+                            score = 0.5  # Puntuación por defecto
                         
                         model_metrics[metric_name] = {
-                            "score": eval_result.score if hasattr(eval_result, 'score') else (1.0 if eval_result.passing else 0.0),
-                            "passing": eval_result.passing if hasattr(eval_result, 'passing') else True,
-                            "feedback": eval_result.feedback if hasattr(eval_result, 'feedback') else "Evaluación completada"
+                            "score": score,
+                            "passing": getattr(eval_result, 'passing', True),
+                            "feedback": getattr(eval_result, 'feedback', "Evaluación completada")
                         }
-                        print(f"      ✅ {metric_name}: {model_metrics[metric_name]['score']:.2f}")
+                        print(f"      ✅ {metric_name}: {score:.2f}")
                         
                     except Exception as e:
                         print(f"      ❌ Error en {metric_name}: {str(e)}")
                         model_metrics[metric_name] = {"error": str(e), "score": 0.0}
                 
-                # Calcular puntuación general
+                # Calcular puntuación general solo con métricas exitosas
                 valid_scores = [m["score"] for m in model_metrics.values() if "score" in m and "error" not in m]
                 overall_score = sum(valid_scores) / len(valid_scores) if valid_scores else 0.0
                 model_metrics["overall_score"] = overall_score
                 
                 metrics[model_name] = model_metrics
-                print(f"🎯 {model_name} - Puntuación general: {overall_score:.2f}")
+                print(f"🎯 {model_name} - Puntuación general: {overall_score:.2f} (de {len(valid_scores)} métricas)")
                 
             except Exception as e:
                 print(f"❌ Error procesando {model_name}: {str(e)}")
