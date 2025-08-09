@@ -184,68 +184,50 @@ async def process_chat(request: ChatRequest):
 
 @app.post("/compare-models")
 async def api_compare_models(request: CompareRequest):
-    """Compara respuestas de múltiples modelos para una misma consulta."""
+    """Compara respuestas usando evaluación académica LlamaIndex con modelo juez."""
     try:
-        logger.info("=== INICIANDO COMPARACIÓN DE MODELOS ===")
-        
-        # ✅ Acceder correctamente a los campos del request
-        models_to_compare = request.models
-        user_question = request.message  # ← Cambiar de 'query' a 'message'
-        collection_name = request.collection  # ← Agregar collection
-        
-        logger.info(f"Consulta: {user_question[:100]}...")
-        logger.info(f"Modelos seleccionados: {models_to_compare}")
-        logger.info(f"Colección: {collection_name}")
+        logger.info("=== INICIANDO EVALUACIÓN ACADÉMICA ===")
         
         # Validaciones
-        if not models_to_compare or len(models_to_compare) < 1:
+        if not request.models or len(request.models) < 1:
             raise HTTPException(status_code=400, detail="Se requiere al menos un modelo para la comparación")
         
-        if not collection_name:
+        if not request.collection:
             raise HTTPException(status_code=400, detail="La colección es obligatoria")
         
-        if not user_question.strip():
+        if not request.message.strip():
             raise HTTPException(status_code=400, detail="La consulta no puede estar vacía")
         
-        results = {}
+        if not request.judge_model:
+            raise HTTPException(status_code=400, detail="El modelo juez es obligatorio")
         
-        # ✅ Para cada modelo crear RAG instance correctamente
-        for model_name in models_to_compare:
-            try:
-                logger.info(f"⚙️ Procesando modelo: {model_name}")
-                
-                # Usar la función existente get_or_create_rag que maneja toda la configuración
-                rag_instances = get_or_create_rag(model_name, collection_name, 1024)
-                
-                # Crear query engine y hacer consulta
-                query_engine = rag_instances['index'].as_query_engine(
-                    similarity_top_k=1,
-                    response_mode="tree_summarize",
-                    verbose=True
-                )
-                
-                # Hacer la consulta
-                response = query_engine.query(user_question + a)
-                results[model_name] = str(response).strip()
-                
-                logger.info(f"✅ Respuesta generada para {model_name}")
-                
-            except Exception as e:
-                logger.error(f"❌ Error procesando modelo {model_name}: {str(e)}")
-                results[model_name] = f"Error: {str(e)}"
+        # Validar que juez no esté en modelos a comparar
+        if request.judge_model in request.models:
+            raise HTTPException(status_code=400, detail="El modelo juez no puede estar en la lista de modelos a comparar")
         
-        logger.info("=== COMPARACIÓN COMPLETADA ===")
+        logger.info(f"Modelos a evaluar: {request.models}")
+        logger.info(f"Modelo juez: {request.judge_model}")
+        logger.info(f"Colección: {request.collection}")
+        
+        # Usar evaluación académica con LlamaIndex
+        from model_comparison import academic_llamaindex_evaluation
+        
+        result = academic_llamaindex_evaluation(request, config)
+        
+        logger.info("=== EVALUACIÓN ACADÉMICA COMPLETADA ===")
         
         return {
-            "query": user_question,
-            "results": results,
-            "metrics": None  # Sin métricas por ahora
+            "results": result["results"],           # Respuestas de modelos evaluados
+            "metrics": result["metrics"],           # Métricas del juez para cada modelo
+            "judge_model": result["judge_model"],   # Qué modelo actuó como juez
+            "evaluation_method": result.get("evaluation_method", "LlamaIndex Academic"),
+            "academic_citation": result.get("academic_citation", "LLM-as-a-Judge Methodology")
         }
         
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error general en comparación: {str(e)}", exc_info=True)
+        logger.error(f"Error en evaluación académica: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Error al comparar modelos: {str(e)}")
 
 @app.get("/api/models")
