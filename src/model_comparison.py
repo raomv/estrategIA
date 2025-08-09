@@ -11,7 +11,11 @@ from pydantic import BaseModel
 import statistics
 from llama_index.llms.ollama import Ollama
 from cache_manager import get_cache_manager
-from rag import RAG  # Añadir este import que falta
+from rag import RAG
+
+# ✅ AÑADIR ESTAS DOS LÍNEAS:
+import nest_asyncio
+nest_asyncio.apply()
 
 # Importar LlamaIndex Settings y Evaluators (SIN RAGAS)
 from llama_index.core.settings import Settings as LlamaSettings
