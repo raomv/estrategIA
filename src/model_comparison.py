@@ -11,6 +11,7 @@ from pydantic import BaseModel
 import statistics
 from llama_index.llms.ollama import Ollama
 from cache_manager import get_cache_manager
+from rag import RAG  # Añadir este import que falta
 
 # Importar LlamaIndex Settings y Evaluators (SIN RAGAS)
 from llama_index.core.settings import Settings as LlamaSettings
@@ -112,7 +113,7 @@ def academic_llamaindex_evaluation(request: CompareRequest, config: dict):
         # Usar el primer modelo para la conexión inicial al índice
         initial_llm = Ollama(model=models_to_compare[0], url=config["llm_url"], request_timeout=300.0)
         
-        # Crear instancia RAG (ahora sin problemas de chunk_size)
+        # Crear instancia RAG (ahora con import correcto)
         rag_instance = RAG(config_file=temp_config, llm=initial_llm)
         shared_index = rag_instance.qdrant_index()
         
