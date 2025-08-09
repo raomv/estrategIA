@@ -182,60 +182,119 @@ def academic_llamaindex_evaluation(request: CompareRequest, config: dict):
                     try:
                         print(f"   📊 Evaluando {metric_name}...")
                         
-                        # Manejo específico según el tipo de evaluador
+                        # ✅ CORREGIDO: Manejo específico y correcto por evaluador
                         if metric_name == "semantic_similarity":
-                            # SemanticSimilarityEvaluator usa parámetros diferentes
-                            eval_result = evaluator.evaluate_response(
-                                response=str(response),
-                                reference=user_question  # Usar pregunta como referencia
-                            )
+                            # SemanticSimilarityEvaluator necesita parámetros específicos
+                            print(f"      🔧 Usando SemanticSimilarityEvaluator con response={type(response)}")
+                            
+                            # Intentar diferentes formas de pasar parámetros
+                            try:
+                                # Opción 1: Con el objeto Response original
+                                eval_result = evaluator.evaluate_response(
+                                    response=response,  # ← Objeto Response, no string
+                                    reference=user_question
+                                )
+                            except Exception as e1:
+                                print(f"      ⚠️ Falló opción 1: {e1}")
+                                try:
+                                    # Opción 2: Solo con el texto
+                                    eval_result = evaluator.evaluate_response(
+                                        response=str(response),
+                                        reference=user_question
+                                    )
+                                except Exception as e2:
+                                    print(f"      ⚠️ Falló opción 2: {e2}")
+                                    # Opción 3: Método diferente
+                                    eval_result = evaluator.evaluate(
+                                        response=str(response),
+                                        reference=user_question
+                                    )
+                        
                         elif metric_name == "correctness":
-                            # CorrectnessEvaluator puede necesitar reference_answer
+                            # CorrectnessEvaluator - probar con y sin reference
+                            print(f"      🔧 Usando CorrectnessEvaluator")
                             try:
                                 eval_result = evaluator.evaluate_response(
                                     query=user_question,
-                                    response=response,
-                                    reference="Based on the provided context"  # Referencia genérica
+                                    response=response,  # Objeto Response
+                                    reference="Expected accurate response based on provided context"
                                 )
-                            except Exception:
-                                # Si falla, intentar sin reference
+                            except Exception as e1:
+                                print(f"      ⚠️ CorrectnessEvaluator con reference falló: {e1}")
+                                # Intentar sin reference
                                 eval_result = evaluator.evaluate_response(
                                     query=user_question,
                                     response=response
                                 )
+                        
                         else:
-                            # Otros evaluadores usan el método estándar
+                            # Evaluadores estándar (faithfulness, relevancy, guideline)
+                            print(f"      🔧 Usando evaluador estándar: {metric_name}")
                             eval_result = evaluator.evaluate_response(
                                 query=user_question,
-                                response=response
+                                response=response  # Objeto Response
                             )
                         
-                        # Extraer puntuación de forma robusta
-                        if hasattr(eval_result, 'score') and eval_result.score is not None:
-                            score = float(eval_result.score)
-                        elif hasattr(eval_result, 'passing'):
-                            score = 1.0 if eval_result.passing else 0.0
+                        # ✅ DEBUGGING DETALLADO de la respuesta del evaluador
+                        print(f"      🔍 Resultado raw: {eval_result}")
+                        print(f"      🔍 Tipo resultado: {type(eval_result)}")
+                        
+                        if hasattr(eval_result, '__dict__'):
+                            print(f"      🔍 Atributos: {list(eval_result.__dict__.keys())}")
+                        
+                        # Extraer score con debugging
+                        score = None
+                        passing = None
+                        feedback = ""
+                        
+                        if hasattr(eval_result, 'score'):
+                            score = eval_result.score
+                            print(f"      📏 Score encontrado: {score} (tipo: {type(score)})")
+                        
+                        if hasattr(eval_result, 'passing'):
+                            passing = eval_result.passing
+                            print(f"      ✅ Passing encontrado: {passing} (tipo: {type(passing)})")
+                        
+                        if hasattr(eval_result, 'feedback'):
+                            feedback = eval_result.feedback
+                            print(f"      💬 Feedback: {str(feedback)[:200]}...")
+                        
+                        # Convertir a score numérico con debugging
+                        if score is not None:
+                            try:
+                                numeric_score = float(score)
+                                print(f"      ✅ Score convertido: {numeric_score}")
+                            except (ValueError, TypeError) as e:
+                                print(f"      ⚠️ Error convirtiendo score {score}: {e}")
+                                numeric_score = 1.0 if passing else 0.0
+                        elif passing is not None:
+                            numeric_score = 1.0 if passing else 0.0
+                            print(f"      🔄 Score desde passing: {numeric_score}")
                         else:
-                            score = 0.5  # Puntuación por defecto
+                            numeric_score = 0.0
+                            print(f"      ⚠️ No score ni passing encontrado, usando 0.0")
                         
                         model_metrics[metric_name] = {
-                            "score": score,
-                            "passing": getattr(eval_result, 'passing', True),
-                            "feedback": getattr(eval_result, 'feedback', "Evaluación completada")
+                            "score": numeric_score,
+                            "passing": passing if passing is not None else (numeric_score > 0.5),
+                            "feedback": str(feedback) if feedback else "Evaluación completada",
+                            "raw_result": str(eval_result)  # Para debugging adicional
                         }
-                        print(f"      ✅ {metric_name}: {score:.2f}")
+                        
+                        print(f"      ✅ {metric_name}: {numeric_score:.2f}")
                         
                     except Exception as e:
                         print(f"      ❌ Error en {metric_name}: {str(e)}")
+                        print(f"      🔍 Error completo: {type(e).__name__}: {e}")
                         model_metrics[metric_name] = {"error": str(e), "score": 0.0}
                 
-                # Calcular puntuación general solo con métricas exitosas
+                # Calcular puntuación general
                 valid_scores = [m["score"] for m in model_metrics.values() if "score" in m and "error" not in m]
                 overall_score = sum(valid_scores) / len(valid_scores) if valid_scores else 0.0
                 model_metrics["overall_score"] = overall_score
                 
                 metrics[model_name] = model_metrics
-                print(f"🎯 {model_name} - Puntuación general: {overall_score:.2f} (de {len(valid_scores)} métricas)")
+                print(f"🎯 {model_name} - Puntuación general: {overall_score:.2f} (de {len(valid_scores)} métricas válidas)")
                 
             except Exception as e:
                 print(f"❌ Error procesando {model_name}: {str(e)}")
@@ -243,17 +302,20 @@ def academic_llamaindex_evaluation(request: CompareRequest, config: dict):
                 metrics[model_name] = {"error": str(e)}
         
         print("\n=== EVALUACIÓN ACADÉMICA COMPLETADA ===")
+        print(f"📊 Contexto: Colección con pocos documentos puede resultar en scores altos")
         
         return {
             "results": results,
             "metrics": metrics,
             "judge_model": judge_model_name,
-            "evaluation_method": "LlamaIndex Academic LLM-as-a-Judge",
+            "evaluation_method": "LlamaIndex Academic LLM-as-a-Judge (Full Metrics + Debug)",
             "academic_citation": "Liu et al. (2022) - LlamaIndex Framework + LLM-as-a-Judge Methodology"
         }
         
     except Exception as e:
         print(f"❌ Error en evaluación académica: {str(e)}")
+        import traceback
+        traceback.print_exc()
         return {
             "error": str(e),
             "results": {},
