@@ -375,7 +375,7 @@ async def upload_documents(
                 "--directory", temp_dir,
                 "--collection", collection,
                 "--chunk_size", str(chunk_size)
-            ], capture_output=True, text=True, timeout=300)  # 5 minutos timeout
+            ], capture_output=True, text=True, timeout=1800)  # ← 30 minutos (era 300)
             
             if result.returncode == 0:
                 print("✅ Procesamiento completado exitosamente")
