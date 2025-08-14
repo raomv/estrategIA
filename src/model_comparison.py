@@ -173,8 +173,19 @@ def academic_llamaindex_evaluation(request: CompareRequest, config: dict):
                 
                 full_question = user_question + " You can only answer based on the provided context."
                 response = query_engine.query(full_question)
-                results[model_name] = str(response).strip()
-                print(f"✅ Respuesta generada para {model_name}")
+                response_text = str(response).strip()
+                
+                # Extraer contexts de la respuesta RAG
+                retrieved_contexts = []
+                if hasattr(response, 'source_nodes') and response.source_nodes:
+                    for node in response.source_nodes:
+                        retrieved_contexts.append(node.text)
+                    
+                    print(f"      📄 Contexts recuperados del RAG: {len(retrieved_contexts)} fragmentos")
+                    for i, ctx in enumerate(retrieved_contexts):
+                        print(f"      📄 Context {i+1} ({len(ctx)} chars): {ctx[:150]}...")
+                else:
+                    print(f"      ⚠️ WARNING: No se recuperaron contexts de Qdrant")
                 
                 # ✅ MEJORADO: Evaluación con manejo específico por tipo
                 model_metrics = {}
@@ -184,55 +195,25 @@ def academic_llamaindex_evaluation(request: CompareRequest, config: dict):
                         
                         # ✅ CORREGIDO: Manejo específico y correcto por evaluador
                         if metric_name == "semantic_similarity":
-                            # SemanticSimilarityEvaluator necesita parámetros específicos
-                            print(f"      🔧 Usando SemanticSimilarityEvaluator con response={type(response)}")
-                            
-                            # Intentar diferentes formas de pasar parámetros
-                            try:
-                                # Opción 1: Con el objeto Response original
-                                eval_result = evaluator.evaluate_response(
-                                    response=response,  # ← Objeto Response, no string
-                                    reference=user_question
-                                )
-                            except Exception as e1:
-                                print(f"      ⚠️ Falló opción 1: {e1}")
-                                try:
-                                    # Opción 2: Solo con el texto
-                                    eval_result = evaluator.evaluate_response(
-                                        response=str(response),
-                                        reference=user_question
-                                    )
-                                except Exception as e2:
-                                    print(f"      ⚠️ Falló opción 2: {e2}")
-                                    # Opción 3: Método diferente
-                                    eval_result = evaluator.evaluate(
-                                        response=str(response),
-                                        reference=user_question
-                                    )
-                        
+                            # SemanticSimilarityEvaluator no necesita contexts
+                            eval_result = evaluator.evaluate_response(
+                                response=response,
+                                reference=user_question
+                            )
                         elif metric_name == "correctness":
-                            # CorrectnessEvaluator - probar con y sin reference
-                            print(f"      🔧 Usando CorrectnessEvaluator")
-                            try:
-                                eval_result = evaluator.evaluate_response(
-                                    query=user_question,
-                                    response=response,  # Objeto Response
-                                    reference="Expected accurate response based on provided context"
-                                )
-                            except Exception as e1:
-                                print(f"      ⚠️ CorrectnessEvaluator con reference falló: {e1}")
-                                # Intentar sin reference
-                                eval_result = evaluator.evaluate_response(
-                                    query=user_question,
-                                    response=response
-                                )
-                        
-                        else:
-                            # Evaluadores estándar (faithfulness, relevancy, guideline)
-                            print(f"      🔧 Usando evaluador estándar: {metric_name}")
+                            # CorrectnessEvaluator con contexts
                             eval_result = evaluator.evaluate_response(
                                 query=user_question,
-                                response=response  # Objeto Response
+                                response=response,
+                                contexts=retrieved_contexts,  # ← AÑADIR ESTA LÍNEA
+                                reference="Expected accurate response based on provided context"
+                            )
+                        else:
+                            # Todos los demás evaluadores (faithfulness, relevancy, guideline)
+                            eval_result = evaluator.evaluate_response(
+                                query=user_question,
+                                response=response,
+                                contexts=retrieved_contexts  # ← AÑADIR ESTA LÍNEA
                             )
                         
                         # ✅ DEBUGGING DETALLADO de la respuesta del evaluador
