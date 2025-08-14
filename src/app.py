@@ -41,6 +41,13 @@ class ChatRequest(BaseModel):
     collection: Optional[str] = None
     chunk_size: Optional[int] = None  # Nuevo campo opcional
 
+class CompareRequest(BaseModel):
+    message: str
+    models: List[str]
+    collection: str
+    judge_model: str
+    include_retrieval_metrics: bool = False  # ✅ NUEVO CAMPO OPCIONAL
+
 # Configurar logging
 logging.basicConfig(
     level=logging.INFO,

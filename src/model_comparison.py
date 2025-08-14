@@ -63,7 +63,7 @@ def get_available_models(config):
                 
     except Exception as e:
         print(f"❌ Error general obteniendo modelos: {e}")
-        return [config.get("llm_name", "deepseek-r1:1.5b")]
+        return [config.get("lllm_name", "deepseek-r1:1.5b")]
 
 def academic_llamaindex_evaluation(request: CompareRequest, config: dict):
     """
@@ -175,99 +175,87 @@ def academic_llamaindex_evaluation(request: CompareRequest, config: dict):
                 response = query_engine.query(full_question)
                 response_text = str(response).strip()
                 
-                # Extraer contexts de la respuesta RAG
+                # Buscar alrededor de la línea donde se evalúan las métricas y reemplazar:
+
+                # ✅ MANTENER extracción de contexts para debugging
                 retrieved_contexts = []
                 if hasattr(response, 'source_nodes') and response.source_nodes:
                     for node in response.source_nodes:
                         retrieved_contexts.append(node.text)
-                    
                     print(f"      📄 Contexts recuperados del RAG: {len(retrieved_contexts)} fragmentos")
                     for i, ctx in enumerate(retrieved_contexts):
                         print(f"      📄 Context {i+1} ({len(ctx)} chars): {ctx[:150]}...")
                 else:
                     print(f"      ⚠️ WARNING: No se recuperaron contexts de Qdrant")
-                
-                # ✅ MEJORADO: Evaluación con manejo específico por tipo
-                model_metrics = {}
+
+                # ✅ CORREGIR evaluación según documentación LlamaIndex
                 for metric_name, evaluator in evaluators.items():
                     try:
                         print(f"   📊 Evaluando {metric_name}...")
                         
-                        # ✅ CORREGIDO: Manejo específico y correcto por evaluador
                         if metric_name == "semantic_similarity":
-                            # SemanticSimilarityEvaluator no necesita contexts
                             eval_result = evaluator.evaluate_response(
                                 response=response,
                                 reference=user_question
                             )
-                        elif metric_name == "correctness":
-                            # CorrectnessEvaluator con contexts
-                            eval_result = evaluator.evaluate_response(
-                                query=user_question,
-                                response=response,
-                                contexts=retrieved_contexts,  # ← AÑADIR ESTA LÍNEA
-                                reference="Expected accurate response based on provided context"
-                            )
                         else:
-                            # Todos los demás evaluadores (faithfulness, relevancy, guideline)
+                            # faithfulness, relevancy, correctness, guideline
+                            # NO pasar contexts - LlamaIndex los extrae automáticamente
                             eval_result = evaluator.evaluate_response(
                                 query=user_question,
-                                response=response,
-                                contexts=retrieved_contexts  # ← AÑADIR ESTA LÍNEA
+                                response=response
                             )
                         
-                        # ✅ DEBUGGING DETALLADO de la respuesta del evaluador
                         print(f"      🔍 Resultado raw: {eval_result}")
                         print(f"      🔍 Tipo resultado: {type(eval_result)}")
                         
                         if hasattr(eval_result, '__dict__'):
                             print(f"      🔍 Atributos: {list(eval_result.__dict__.keys())}")
                         
-                        # Extraer score con debugging
+                        # Extraer score
                         score = None
+                        if hasattr(eval_result, 'score') and eval_result.score is not None:
+                            score = float(eval_result.score)
+                            print(f"      📏 Score encontrado: {score} (tipo: {type(eval_result.score)})")
+                        else:
+                            print(f"      ⚠️ Score no encontrado o es None")
+                        
+                        # Extraer passing
                         passing = None
-                        feedback = ""
-                        
-                        if hasattr(eval_result, 'score'):
-                            score = eval_result.score
-                            print(f"      📏 Score encontrado: {score} (tipo: {type(score)})")
-                        
                         if hasattr(eval_result, 'passing'):
                             passing = eval_result.passing
                             print(f"      ✅ Passing encontrado: {passing} (tipo: {type(passing)})")
                         
-                        if hasattr(eval_result, 'feedback'):
-                            feedback = eval_result.feedback
-                            print(f"      💬 Feedback: {str(feedback)[:200]}...")
+                        # Extraer feedback
+                        feedback = ""
+                        if hasattr(eval_result, 'feedback') and eval_result.feedback:
+                            feedback = str(eval_result.feedback)
+                            print(f"      💬 Feedback: {feedback[:100]}...")
                         
-                        # Convertir a score numérico con debugging
-                        if score is not None:
-                            try:
-                                numeric_score = float(score)
-                                print(f"      ✅ Score convertido: {numeric_score}")
-                            except (ValueError, TypeError) as e:
-                                print(f"      ⚠️ Error convirtiendo score {score}: {e}")
-                                numeric_score = 1.0 if passing else 0.0
-                        elif passing is not None:
-                            numeric_score = 1.0 if passing else 0.0
-                            print(f"      🔄 Score desde passing: {numeric_score}")
-                        else:
-                            numeric_score = 0.0
-                            print(f"      ⚠️ No score ni passing encontrado, usando 0.0")
+                        # Convertir score si es necesario
+                        if score is None and passing is not None:
+                            score = 1.0 if passing else 0.0
+                            print(f"      🔄 Score convertido desde passing: {score}")
+                        elif score is None:
+                            score = 0.0
+                            print(f"      ⚠️ Score por defecto: {score}")
                         
-                        model_metrics[metric_name] = {
-                            "score": numeric_score,
-                            "passing": passing if passing is not None else (numeric_score > 0.5),
-                            "feedback": str(feedback) if feedback else "Evaluación completada",
-                            "raw_result": str(eval_result)  # Para debugging adicional
-                        }
+                        final_score = round(float(score), 2) if score is not None else 0.0
+                        print(f"      ✅ Score convertido: {final_score}")
+                        print(f"      ✅ {metric_name}: {final_score}")
                         
-                        print(f"      ✅ {metric_name}: {numeric_score:.2f}")
+                        # Guardar métrica
+                        if model_name not in metrics:
+                            metrics[model_name] = {}
+                        metrics[model_name][metric_name] = final_score
                         
                     except Exception as e:
-                        print(f"      ❌ Error en {metric_name}: {str(e)}")
+                        print(f"      ❌ Error en {metric_name}: {e}")
                         print(f"      🔍 Error completo: {type(e).__name__}: {e}")
-                        model_metrics[metric_name] = {"error": str(e), "score": 0.0}
+                        
+                        if model_name not in metrics:
+                            metrics[model_name] = {}
+                        metrics[model_name][metric_name] = 0.0
                 
                 # Calcular puntuación general
                 valid_scores = [m["score"] for m in model_metrics.values() if "score" in m and "error" not in m]
@@ -285,12 +273,31 @@ def academic_llamaindex_evaluation(request: CompareRequest, config: dict):
         print("\n=== EVALUACIÓN ACADÉMICA COMPLETADA ===")
         print(f"📊 Contexto: Colección con pocos documentos puede resultar en scores altos")
         
+        # ✅ AÑADIR antes del return final:
+        
+        # Evaluación de retrieval si se solicita
+        retrieval_metrics = None
+        if hasattr(request, 'include_retrieval_metrics') and request.include_retrieval_metrics:
+            print(f"\n🔍 === INICIANDO EVALUACIÓN DE RETRIEVAL ===")
+            retrieval_metrics = evaluate_retrieval_metrics(
+                query_engine=query_engine,
+                user_query=request.question,  # Solo la query del usuario
+                config=config
+            )
+            print(f"🔍 === EVALUACIÓN DE RETRIEVAL COMPLETADA ===\n")
+        
+        # MODIFICAR el return existente:
         return {
             "results": results,
             "metrics": metrics,
-            "judge_model": judge_model_name,
-            "evaluation_method": "LlamaIndex Academic LLM-as-a-Judge (Full Metrics + Debug)",
-            "academic_citation": "Liu et al. (2022) - LlamaIndex Framework + LLM-as-a-Judge Methodology"
+            "retrieval_metrics": retrieval_metrics,  # ✅ NUEVO
+            "metadata": {
+                "judge_model": request.judge_model,
+                "total_models": len(models_to_compare),
+                "collection": request.collection,
+                "evaluation_time": time.time() - start_time,
+                "retrieval_evaluated": retrieval_metrics is not None  # ✅ NUEVO
+            }
         }
         
     except Exception as e:
@@ -305,3 +312,65 @@ def academic_llamaindex_evaluation(request: CompareRequest, config: dict):
         }
 
 # ❌ REMOVER todas las funciones relacionadas con RAGAS que estaban aquí anteriormente
+
+def evaluate_retrieval_metrics(query_engine, user_query, config):
+    """
+    Evalúa sistema de retrieval para la query específica del usuario
+    Solo métricas nativas de LlamaIndex: Hit Rate y MRR
+    """
+    try:
+        from llama_index.core.evaluation import RetrieverEvaluator
+        
+        print("🔍 === EVALUACIÓN DEL SISTEMA DE RETRIEVAL ===")
+        print(f"📄 Modelo de Embeddings: {config.get('embedding_model', 'fastembed')}")
+        print(f"🗄️ Vector Store: Qdrant")
+        print(f"❓ Query del usuario: '{user_query[:50]}...'")
+        
+        # Extraer retriever del query_engine
+        retriever = query_engine.retriever
+        
+        # ✅ Solo métricas nativas disponibles en LlamaIndex
+        evaluator = RetrieverEvaluator.from_metric_names(
+            ["hit_rate", "mrr"], 
+            retriever=retriever
+        )
+        
+        print(f"\n🔍 Evaluando retrieval para la query del usuario...")
+        
+        # Evaluar retrieval para la query específica
+        result = evaluator.evaluate(query=user_query)
+        
+        print(f"   📊 Hit Rate: {result.hit_rate:.3f}")
+        print(f"   📊 MRR: {result.mrr:.3f}")
+        print(f"   📄 Documentos recuperados: {len(result.retrieved_nodes) if hasattr(result, 'retrieved_nodes') else 'N/A'}")
+        
+        # Interpretación para logs
+        if result.hit_rate == 1.0:
+            print(f"   ✅ Se encontraron documentos relevantes")
+        else:
+            print(f"   ⚠️ No se encontraron documentos suficientemente relevantes")
+        
+        return {
+            "query": user_query,
+            "hit_rate": result.hit_rate,
+            "mrr": result.mrr,
+            "retrieved_count": len(result.retrieved_nodes) if hasattr(result, 'retrieved_nodes') else 0,
+            "interpretation": {
+                "hit_rate_status": "success" if result.hit_rate == 1.0 else "warning",
+                "mrr_quality": "excellent" if result.mrr > 0.8 else "good" if result.mrr > 0.5 else "poor"
+            },
+            "metadata": {
+                "embedding_model": config.get("embedding_model", "fastembed"),
+                "vector_store": "qdrant",
+                "evaluation_timestamp": time.time()
+            }
+        }
+        
+    except Exception as e:
+        print(f"❌ Error en evaluación de retrieval: {e}")
+        return {
+            "error": str(e),
+            "query": user_query,
+            "hit_rate": 0.0,
+            "mrr": 0.0
+        }
