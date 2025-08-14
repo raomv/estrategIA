@@ -215,21 +215,21 @@ async def api_compare_models(request: CompareRequest):
         logger.info(f"Modelos a evaluar: {request.models}")
         logger.info(f"Modelo juez: {request.judge_model}")
         logger.info(f"Colección: {request.collection}")
+        logger.info(f"Incluir métricas de retrieval: {request.include_retrieval_metrics}")
         
         # Usar evaluación académica con LlamaIndex
         from model_comparison import academic_llamaindex_evaluation
         
         result = academic_llamaindex_evaluation(request, config)
         
+        if "error" in result:
+            logger.error(f"Error en evaluación: {result['error']}")
+            raise HTTPException(status_code=500, detail=result["error"])
+        
         logger.info("=== EVALUACIÓN ACADÉMICA COMPLETADA ===")
         
-        return {
-            "results": result["results"],           # Respuestas de modelos evaluados
-            "metrics": result["metrics"],           # Métricas del juez para cada modelo
-            "judge_model": result["judge_model"],   # Qué modelo actuó como juez
-            "evaluation_method": result.get("evaluation_method", "LlamaIndex Academic"),
-            "academic_citation": result.get("academic_citation", "LLM-as-a-Judge Methodology")
-        }
+        # ✅ DEVOLVER DIRECTAMENTE EL RESULTADO - más simple y sin errores
+        return result
         
     except HTTPException:
         raise
