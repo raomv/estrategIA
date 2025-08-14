@@ -9,6 +9,7 @@ import json
 from typing import List, Dict, Any, Optional
 from pydantic import BaseModel
 import statistics
+import time  # ✅ AÑADIR IMPORT QUE FALTA
 from llama_index.llms.ollama import Ollama
 from cache_manager import get_cache_manager
 from rag import RAG
@@ -35,6 +36,7 @@ class CompareRequest(BaseModel):
     models: List[str]
     collection: str
     judge_model: str  # Campo obligatorio para el juez
+    include_retrieval_metrics: bool = False  # ✅ AÑADIR CAMPO QUE FALTA
 
 def get_available_models(config):
     """Obtiene la lista de modelos disponibles en Ollama."""
@@ -69,6 +71,8 @@ def academic_llamaindex_evaluation(request: CompareRequest, config: dict):
     """
     Evaluación académica usando LlamaIndex: Juez evalúa respuestas, no las genera.
     """
+    start_time = time.time()  # ✅ AÑADIR ESTA LÍNEA
+    
     try:
         print("=== EVALUACIÓN ACADÉMICA CON LLAMAINDEX NATIVO ===")
         
@@ -158,11 +162,17 @@ def academic_llamaindex_evaluation(request: CompareRequest, config: dict):
         results = {}
         metrics = {}
         
+        # ✅ VARIABLE PARA QUERY_ENGINE (para retrieval metrics)
+        query_engine = None
+        
         # 4. Para cada modelo: evaluar con todos los evaluadores disponibles
         for model_name in models_to_compare:
+            print(f"\n🔄 Procesando modelo: {model_name}")
+            
+            # ✅ INICIALIZAR model_metrics AQUÍ
+            model_metrics = {}
+            
             try:
-                print(f"\n🔄 Procesando modelo: {model_name}")
-                
                 model_llm = Ollama(model=model_name, url=config["llm_url"], request_timeout=300.0)
                 
                 query_engine = shared_index.as_query_engine(
@@ -175,8 +185,9 @@ def academic_llamaindex_evaluation(request: CompareRequest, config: dict):
                 response = query_engine.query(full_question)
                 response_text = str(response).strip()
                 
-                # Buscar alrededor de la línea donde se evalúan las métricas y reemplazar:
-
+                print(f"   📝 Respuesta generada ({len(response_text)} chars): {response_text[:100]}...")
+                results[model_name] = response_text
+                
                 # ✅ MANTENER extracción de contexts para debugging
                 retrieved_contexts = []
                 if hasattr(response, 'source_nodes') and response.source_nodes:
@@ -244,59 +255,53 @@ def academic_llamaindex_evaluation(request: CompareRequest, config: dict):
                         print(f"      ✅ Score convertido: {final_score}")
                         print(f"      ✅ {metric_name}: {final_score}")
                         
-                        # Guardar métrica
-                        if model_name not in metrics:
-                            metrics[model_name] = {}
-                        metrics[model_name][metric_name] = final_score
+                        # ✅ GUARDAR EN model_metrics
+                        model_metrics[metric_name] = final_score
                         
                     except Exception as e:
                         print(f"      ❌ Error en {metric_name}: {e}")
                         print(f"      🔍 Error completo: {type(e).__name__}: {e}")
-                        
-                        if model_name not in metrics:
-                            metrics[model_name] = {}
-                        metrics[model_name][metric_name] = 0.0
+                        model_metrics[metric_name] = 0.0
                 
-                # Calcular puntuación general
-                valid_scores = [m["score"] for m in model_metrics.values() if "score" in m and "error" not in m]
+                # ✅ CALCULAR PUNTUACIÓN GENERAL CORRECTAMENTE
+                valid_scores = [score for score in model_metrics.values() if isinstance(score, (int, float))]
                 overall_score = sum(valid_scores) / len(valid_scores) if valid_scores else 0.0
                 model_metrics["overall_score"] = overall_score
                 
-                metrics[model_name] = model_metrics
                 print(f"🎯 {model_name} - Puntuación general: {overall_score:.2f} (de {len(valid_scores)} métricas válidas)")
                 
             except Exception as e:
                 print(f"❌ Error procesando {model_name}: {str(e)}")
                 results[model_name] = f"Error: {str(e)}"
-                metrics[model_name] = {"error": str(e)}
+                model_metrics = {"error": str(e)}
+            
+            # ✅ ASEGURAR QUE model_metrics SIEMPRE SE ASIGNA
+            metrics[model_name] = model_metrics
         
         print("\n=== EVALUACIÓN ACADÉMICA COMPLETADA ===")
         print(f"📊 Contexto: Colección con pocos documentos puede resultar en scores altos")
         
-        # ✅ AÑADIR antes del return final:
-        
-        # Evaluación de retrieval si se solicita
+        # ✅ EVALUACIÓN DE RETRIEVAL CORREGIDA
         retrieval_metrics = None
-        if hasattr(request, 'include_retrieval_metrics') and request.include_retrieval_metrics:
+        if hasattr(request, 'include_retrieval_metrics') and request.include_retrieval_metrics and query_engine:
             print(f"\n🔍 === INICIANDO EVALUACIÓN DE RETRIEVAL ===")
             retrieval_metrics = evaluate_retrieval_metrics(
                 query_engine=query_engine,
-                user_query=request.question,  # Solo la query del usuario
+                user_query=request.message,  # ✅ CAMBIAR DE request.question a request.message
                 config=config
             )
             print(f"🔍 === EVALUACIÓN DE RETRIEVAL COMPLETADA ===\n")
         
-        # MODIFICAR el return existente:
         return {
             "results": results,
             "metrics": metrics,
-            "retrieval_metrics": retrieval_metrics,  # ✅ NUEVO
+            "retrieval_metrics": retrieval_metrics,
             "metadata": {
                 "judge_model": request.judge_model,
                 "total_models": len(models_to_compare),
                 "collection": request.collection,
                 "evaluation_time": time.time() - start_time,
-                "retrieval_evaluated": retrieval_metrics is not None  # ✅ NUEVO
+                "retrieval_evaluated": retrieval_metrics is not None
             }
         }
         
@@ -308,10 +313,12 @@ def academic_llamaindex_evaluation(request: CompareRequest, config: dict):
             "error": str(e),
             "results": {},
             "metrics": {},
-            "judge_model": request.judge_model if hasattr(request, 'judge_model') else "unknown"
+            "retrieval_metrics": None,
+            "metadata": {
+                "judge_model": request.judge_model if hasattr(request, 'judge_model') else "unknown",
+                "evaluation_time": time.time() - start_time if 'start_time' in locals() else 0
+            }
         }
-
-# ❌ REMOVER todas las funciones relacionadas con RAGAS que estaban aquí anteriormente
 
 def evaluate_retrieval_metrics(query_engine, user_query, config):
     """
