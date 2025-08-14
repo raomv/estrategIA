@@ -207,20 +207,21 @@ def academic_llamaindex_evaluation(request: CompareRequest, config: dict):
                                 response=response,
                                 reference=user_question
                             )
+                        elif metric_name == "guideline":
+                            # ✅ PASAR CONTEXTS AL GUIDELINE EVALUATOR
+                            eval_result = evaluator.evaluate_response(
+                                query=user_question,
+                                response=response,
+                                contexts=retrieved_contexts  # ✅ ESTO ES LO QUE FALTABA
+                            )
                         else:
+                            # faithfulness, relevancy, correctness
                             eval_result = evaluator.evaluate_response(
                                 query=user_question,
                                 response=response
                             )
                         
-                        # ✅ DEBUGGING COMPLETO - ESTO ES LO QUE FALTABA
-                        print(f"      🔍 Resultado raw para {metric_name}: {eval_result}")
-                        print(f"      🔍 Tipo resultado: {type(eval_result)}")
-                        
-                        if hasattr(eval_result, '__dict__'):
-                            print(f"      🔍 Atributos: {list(eval_result.__dict__.keys())}")
-                        
-                        # Extraer score con debugging
+                        # ✅ EXTRACCIÓN DE SCORE CORREGIDA
                         score = None
                         if hasattr(eval_result, 'score'):
                             raw_score = eval_result.score
@@ -233,27 +234,23 @@ def academic_llamaindex_evaluation(request: CompareRequest, config: dict):
                         else:
                             print(f"      ❌ No tiene atributo 'score': {metric_name}")
                         
-                        # Extraer passing con debugging
+                        # Extraer passing
                         passing = None
                         if hasattr(eval_result, 'passing'):
                             passing = eval_result.passing
                             print(f"      ✅ Passing: {passing} (tipo: {type(passing)})")
-                        else:
-                            print(f"      ⚠️ No tiene atributo 'passing': {metric_name}")
                         
-                        # Extraer feedback con debugging
+                        # Extraer feedback
                         feedback = ""
                         if hasattr(eval_result, 'feedback'):
                             raw_feedback = eval_result.feedback
-                            print(f"      💬 Feedback raw: {raw_feedback}")
                             if raw_feedback:
                                 feedback = str(raw_feedback)
                                 print(f"      💬 Feedback (primeros 150 chars): {feedback[:150]}...")
                                 
-                                # ✅ PARA CORRECTNESS: Extraer score del feedback
+                                # ✅ PARA CORRECTNESS: Extraer score del feedback CON NORMALIZACIÓN CORRECTA
                                 if metric_name == "correctness" and score is None:
                                     import re
-                                    # Buscar patrones como "4.0", "3.5", etc en el feedback
                                     score_patterns = [
                                         r'\b(\d+\.?\d*)\s*(?:out of|/)\s*5',  # "4.0 out of 5"
                                         r'\bscore[:\s]*(\d+\.?\d*)',          # "score: 4.0"
@@ -268,22 +265,23 @@ def academic_llamaindex_evaluation(request: CompareRequest, config: dict):
                                                 extracted_score = float(score_match.group(1))
                                                 print(f"      🔧 Score extraído del feedback: {extracted_score}")
                                                 
-                                                # Normalizar si es > 1 (ej: 4.0 -> 0.8)
+                                                # ✅ NORMALIZACIÓN CORRECTA SIN REDONDEO AGRESIVO
                                                 if extracted_score > 1:
-                                                    score = min(extracted_score / 5.0, 1.0)
+                                                    # Asumimos escala de 5 puntos
+                                                    score = extracted_score / 5.0
+                                                    print(f"      🔧 Score normalizado (escala 5): {score:.3f}")
                                                 else:
+                                                    # Ya está en escala 0-1
                                                     score = extracted_score
-                                                    
-                                                print(f"      🔧 Score normalizado: {score}")
+                                                    print(f"      🔧 Score ya normalizado: {score:.3f}")
+                                                
+                                                # ✅ LÍMITE MÁXIMO SIN REDONDEO AGRESIVO
+                                                score = min(score, 1.0)
                                                 break
                                             except ValueError:
                                                 continue
-                            else:
-                                print(f"      ⚠️ Feedback vacío para {metric_name}")
-                        else:
-                            print(f"      ⚠️ No tiene atributo 'feedback': {metric_name}")
                         
-                        # Convertir score final con debugging
+                        # ✅ CONVERSIÓN FINAL SIN REDONDEO AGRESIVO
                         if score is None and passing is not None:
                             score = 1.0 if passing else 0.0
                             print(f"      🔄 Score convertido desde passing: {score}")
@@ -291,12 +289,12 @@ def academic_llamaindex_evaluation(request: CompareRequest, config: dict):
                             score = 0.0
                             print(f"      ⚠️ Score por defecto para {metric_name}: {score}")
                         
-                        final_score = round(float(score), 2)
+                        # ✅ REDONDEO CONSERVADOR A 3 DECIMALES (NO A ENTEROS)
+                        final_score = round(float(score), 3)  # 0.8 -> 0.800, NO 1.0
                         
-                        # ✅ ESTRUCTURA CORRECTA PARA EL FRONTEND
                         model_metrics[metric_name] = {
                             "score": final_score,
-                            "passing": passing if passing is not None else (final_score > 0.5),
+                            "passing": passing if passing is not None else (final_score >= 0.5),
                             "feedback": feedback[:300] + "..." if len(feedback) > 300 else feedback
                         }
                         
