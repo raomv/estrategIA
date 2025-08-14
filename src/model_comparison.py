@@ -208,11 +208,10 @@ def academic_llamaindex_evaluation(request: CompareRequest, config: dict):
                                 reference=user_question
                             )
                         elif metric_name == "guideline":
-                            # ✅ PASAR CONTEXTS AL GUIDELINE EVALUATOR
+                            # ✅ NO PASAR CONTEXTS - GuidelineEvaluator los extrae automáticamente
                             eval_result = evaluator.evaluate_response(
                                 query=user_question,
-                                response=response,
-                                contexts=retrieved_contexts  # ✅ ESTO ES LO QUE FALTABA
+                                response=response
                             )
                         else:
                             # faithfulness, relevancy, correctness
