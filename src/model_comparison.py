@@ -245,7 +245,7 @@ def academic_llamaindex_evaluation(request: CompareRequest, config: dict):
                             raw_feedback = eval_result.feedback
                             if raw_feedback:
                                 feedback = str(raw_feedback)
-                                print(f"      💬 Feedback (primeros 150 chars): {feedback[:150]}...")
+                                print(f"      💬 Feedback completo: {feedback}")  # ✅ CAMBIO 1: SIN CORTE
                                 
                                 # ✅ PARA CORRECTNESS: Extraer score del feedback CON NORMALIZACIÓN CORRECTA
                                 if metric_name == "correctness" and score is None:
@@ -291,13 +291,13 @@ def academic_llamaindex_evaluation(request: CompareRequest, config: dict):
                         # ✅ REDONDEO CONSERVADOR A 3 DECIMALES (NO A ENTEROS)
                         final_score = round(float(score), 3)  # 0.8 -> 0.800, NO 1.0
                         
+                        # ✅ CAMBIO 2: ELIMINAR 'passing' DEL JSON AL FRONTEND
                         model_metrics[metric_name] = {
                             "score": final_score,
-                            "passing": passing if passing is not None else (final_score >= 0.5),
-                            "feedback": feedback[:300] + "..." if len(feedback) > 300 else feedback
+                            "feedback": feedback  # ✅ SIN CORTE [:300]
                         }
                         
-                        print(f"      ✅ {metric_name}: {final_score} (passing: {passing})")
+                        print(f"      ✅ {metric_name}: {final_score}")
                         
                     except Exception as e:
                         print(f"      ❌ Error evaluando {metric_name}: {e}")
@@ -305,7 +305,6 @@ def academic_llamaindex_evaluation(request: CompareRequest, config: dict):
                         traceback.print_exc()
                         model_metrics[metric_name] = {
                             "score": 0.0,
-                            "passing": False,
                             "feedback": f"Error en evaluación: {str(e)}"
                         }
                 
