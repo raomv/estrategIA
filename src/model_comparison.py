@@ -197,7 +197,7 @@ def academic_llamaindex_evaluation(request: CompareRequest, config: dict):
                 else:
                     print(f"      ⚠️ WARNING: No se recuperaron contexts de Qdrant")
 
-                # ✅ EVALUACIÓN CON ESTRUCTURA CORREGIDA
+                # ✅ EVALUACIÓN CON DEBUGGING COMPLETO
                 for metric_name, evaluator in evaluators.items():
                     try:
                         print(f"   📊 Evaluando {metric_name}...")
@@ -213,26 +213,83 @@ def academic_llamaindex_evaluation(request: CompareRequest, config: dict):
                                 response=response
                             )
                         
-                        # Extraer score
-                        score = None
-                        if hasattr(eval_result, 'score') and eval_result.score is not None:
-                            score = float(eval_result.score)
+                        # ✅ DEBUGGING COMPLETO - ESTO ES LO QUE FALTABA
+                        print(f"      🔍 Resultado raw para {metric_name}: {eval_result}")
+                        print(f"      🔍 Tipo resultado: {type(eval_result)}")
                         
-                        # Extraer passing
+                        if hasattr(eval_result, '__dict__'):
+                            print(f"      🔍 Atributos: {list(eval_result.__dict__.keys())}")
+                        
+                        # Extraer score con debugging
+                        score = None
+                        if hasattr(eval_result, 'score'):
+                            raw_score = eval_result.score
+                            print(f"      📏 Score raw: {raw_score} (tipo: {type(raw_score)})")
+                            if raw_score is not None:
+                                score = float(raw_score)
+                                print(f"      📏 Score convertido: {score}")
+                            else:
+                                print(f"      ⚠️ Score es None para {metric_name}")
+                        else:
+                            print(f"      ❌ No tiene atributo 'score': {metric_name}")
+                        
+                        # Extraer passing con debugging
                         passing = None
                         if hasattr(eval_result, 'passing'):
                             passing = eval_result.passing
+                            print(f"      ✅ Passing: {passing} (tipo: {type(passing)})")
+                        else:
+                            print(f"      ⚠️ No tiene atributo 'passing': {metric_name}")
                         
-                        # Extraer feedback
+                        # Extraer feedback con debugging
                         feedback = ""
-                        if hasattr(eval_result, 'feedback') and eval_result.feedback:
-                            feedback = str(eval_result.feedback)
+                        if hasattr(eval_result, 'feedback'):
+                            raw_feedback = eval_result.feedback
+                            print(f"      💬 Feedback raw: {raw_feedback}")
+                            if raw_feedback:
+                                feedback = str(raw_feedback)
+                                print(f"      💬 Feedback (primeros 150 chars): {feedback[:150]}...")
+                                
+                                # ✅ PARA CORRECTNESS: Extraer score del feedback
+                                if metric_name == "correctness" and score is None:
+                                    import re
+                                    # Buscar patrones como "4.0", "3.5", etc en el feedback
+                                    score_patterns = [
+                                        r'\b(\d+\.?\d*)\s*(?:out of|/)\s*5',  # "4.0 out of 5"
+                                        r'\bscore[:\s]*(\d+\.?\d*)',          # "score: 4.0"
+                                        r'\b(\d+\.?\d*)\s*/\s*5',             # "4.0/5"
+                                        r'\b(\d+\.?\d*)\b'                    # cualquier número
+                                    ]
+                                    
+                                    for pattern in score_patterns:
+                                        score_match = re.search(pattern, feedback, re.IGNORECASE)
+                                        if score_match:
+                                            try:
+                                                extracted_score = float(score_match.group(1))
+                                                print(f"      🔧 Score extraído del feedback: {extracted_score}")
+                                                
+                                                # Normalizar si es > 1 (ej: 4.0 -> 0.8)
+                                                if extracted_score > 1:
+                                                    score = min(extracted_score / 5.0, 1.0)
+                                                else:
+                                                    score = extracted_score
+                                                    
+                                                print(f"      🔧 Score normalizado: {score}")
+                                                break
+                                            except ValueError:
+                                                continue
+                            else:
+                                print(f"      ⚠️ Feedback vacío para {metric_name}")
+                        else:
+                            print(f"      ⚠️ No tiene atributo 'feedback': {metric_name}")
                         
-                        # Convertir score si es necesario
+                        # Convertir score final con debugging
                         if score is None and passing is not None:
                             score = 1.0 if passing else 0.0
+                            print(f"      🔄 Score convertido desde passing: {score}")
                         elif score is None:
                             score = 0.0
+                            print(f"      ⚠️ Score por defecto para {metric_name}: {score}")
                         
                         final_score = round(float(score), 2)
                         
@@ -240,17 +297,19 @@ def academic_llamaindex_evaluation(request: CompareRequest, config: dict):
                         model_metrics[metric_name] = {
                             "score": final_score,
                             "passing": passing if passing is not None else (final_score > 0.5),
-                            "feedback": feedback[:200] + "..." if len(feedback) > 200 else feedback
+                            "feedback": feedback[:300] + "..." if len(feedback) > 300 else feedback
                         }
                         
-                        print(f"      ✅ {metric_name}: {final_score}")
+                        print(f"      ✅ {metric_name}: {final_score} (passing: {passing})")
                         
                     except Exception as e:
-                        print(f"      ❌ Error en {metric_name}: {e}")
+                        print(f"      ❌ Error evaluando {metric_name}: {e}")
+                        import traceback
+                        traceback.print_exc()
                         model_metrics[metric_name] = {
                             "score": 0.0,
                             "passing": False,
-                            "feedback": f"Error: {str(e)}"
+                            "feedback": f"Error en evaluación: {str(e)}"
                         }
                 
                 # ✅ CALCULAR PUNTUACIÓN GENERAL CORRECTAMENTE
