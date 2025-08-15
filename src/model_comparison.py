@@ -132,9 +132,9 @@ def academic_llamaindex_evaluation(request: CompareRequest, config: dict):
         try:
             evaluators["guideline"] = GuidelineEvaluator(
                 llm=judge_llm,
-                guidelines="The response should be helpful, accurate, and based only on the provided context."
+                guidelines="IGNORE your training knowledge. Evaluate ONLY against the provided context. The response should use only information from the given context documents. Do not apply external knowledge about typical military structures or common practices."
             )
-            print("✅ GuidelineEvaluator creado")
+            print("✅ GuidelineEvaluator creado (con instrucciones estrictas)")
         except Exception as e:
             print(f"⚠️ GuidelineEvaluator no disponible: {e}")
         
@@ -249,6 +249,11 @@ def academic_llamaindex_evaluation(request: CompareRequest, config: dict):
                                 # ✅ PARA CORRECTNESS: Extraer score del feedback CON NORMALIZACIÓN CORRECTA
                                 if metric_name == "correctness" and score is None:
                                     import re
+                                    
+                                    # ✅ LIMPIAR <think> TAGS ANTES DE PARSING
+                                    clean_feedback = re.sub(r'<think>.*?</think>', '', feedback, flags=re.DOTALL)
+                                    print(f"      🧹 Feedback limpio (sin <think>): {clean_feedback[:100]}...")
+                                    
                                     score_patterns = [
                                         r'\b(\d+\.?\d*)\s*(?:out of|/)\s*5',  # "4.0 out of 5"
                                         r'\bscore[:\s]*(\d+\.?\d*)',          # "score: 4.0"
@@ -257,7 +262,7 @@ def academic_llamaindex_evaluation(request: CompareRequest, config: dict):
                                     ]
                                     
                                     for pattern in score_patterns:
-                                        score_match = re.search(pattern, feedback, re.IGNORECASE)
+                                        score_match = re.search(pattern, clean_feedback, re.IGNORECASE)
                                         if score_match:
                                             try:
                                                 extracted_score = float(score_match.group(1))
