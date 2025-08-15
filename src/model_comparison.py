@@ -104,21 +104,29 @@ def academic_llamaindex_evaluation(request: CompareRequest, config: dict):
         
         # Evaluadores que funcionan bien
         try:
-            evaluators["faithfulness"] = FaithfulnessEvaluator(llm=judge_llm)
-            print("✅ FaithfulnessEvaluator creado")
+            evaluators["faithfulness"] = FaithfulnessEvaluator(
+                llm=judge_llm,
+                prompt_template="You are an expert evaluator. Is the response faithful to context? All claims must be verifiable from context. Think step by step. Answer: YES or NO followed by brief explanation."
+            )
+            print("✅ FaithfulnessEvaluator creado (prompt mejorado)")
         except Exception as e:
             print(f"❌ Error creando FaithfulnessEvaluator: {e}")
         
         try:
-            evaluators["relevancy"] = RelevancyEvaluator(llm=judge_llm)
-            print("✅ RelevancyEvaluator creado")
+            evaluators["relevancy"] = RelevancyEvaluator(
+                llm=judge_llm,
+                prompt_template="You are an expert evaluator. Rate relevancy 0.0-1.0. Does the response directly address the query? Think step by step. Answer: Score [0.0-1.0] followed by explanation."
+            )
+            print("✅ RelevancyEvaluator creado (prompt mejorado)")
         except Exception as e:
             print(f"❌ Error creando RelevancyEvaluator: {e}")
         
-        # CorrectnessEvaluator necesita manejo especial
         try:
-            evaluators["correctness"] = CorrectnessEvaluator(llm=judge_llm)
-            print("✅ CorrectnessEvaluator creado")
+            evaluators["correctness"] = CorrectnessEvaluator(
+                llm=judge_llm,
+                prompt_template="You are an expert evaluator. Rate correctness 0.0-1.0 where 1.0=perfect, 0.8=good, 0.6=fair, 0.4=poor, 0.0=wrong. Think step by step. Answer: Score [0.0-1.0] followed by explanation."
+            )
+            print("✅ CorrectnessEvaluator creado (prompt mejorado)")
         except Exception as e:
             print(f"⚠️ CorrectnessEvaluator no disponible: {e}")
         
@@ -280,7 +288,7 @@ def academic_llamaindex_evaluation(request: CompareRequest, config: dict):
                                             except ValueError:
                                                 continue
                         
-                        # ✅ CONVERSIÓN FINAL SIN REDONDEO AGRESIVO
+                        # ✅ CONVERSIÓN FINAL CON NORMALIZACIÓN UNIVERSAL
                         if score is None and passing is not None:
                             score = 1.0 if passing else 0.0
                             print(f"      🔄 Score convertido desde passing: {score}")
@@ -288,8 +296,22 @@ def academic_llamaindex_evaluation(request: CompareRequest, config: dict):
                             score = 0.0
                             print(f"      ⚠️ Score por defecto para {metric_name}: {score}")
                         
-                        # ✅ REDONDEO CONSERVADOR A 3 DECIMALES (NO A ENTEROS)
-                        final_score = round(float(score), 3)  # 0.8 -> 0.800, NO 1.0
+                        # ✅ NORMALIZACIÓN A ESCALA 0-1 PARA TODOS
+                        if score > 1.0:
+                            # Si el score viene en escala 0-5 o 0-10, normalizar
+                            if score <= 5.0:
+                                score = score / 5.0  # Escala 0-5 → 0-1
+                                print(f"      🔧 Score normalizado (escala 5): {score:.3f}")
+                            elif score <= 10.0:
+                                score = score / 10.0  # Escala 0-10 → 0-1
+                                print(f"      🔧 Score normalizado (escala 10): {score:.3f}")
+                            else:
+                                score = 1.0  # Clamp a máximo 1.0
+                                print(f"      ⚠️ Score clampeado a 1.0: {score}")
+                        
+                        # ✅ GARANTIZAR RANGO 0-1
+                        score = max(0.0, min(1.0, score))
+                        final_score = round(float(score), 3)
                         
                         # ✅ CAMBIO 2: ELIMINAR 'passing' DEL JSON AL FRONTEND
                         model_metrics[metric_name] = {
