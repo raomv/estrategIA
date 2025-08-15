@@ -104,29 +104,20 @@ def academic_llamaindex_evaluation(request: CompareRequest, config: dict):
         
         # Evaluadores que funcionan bien
         try:
-            evaluators["faithfulness"] = FaithfulnessEvaluator(
-                llm=judge_llm,
-                prompt_template="You are an expert evaluator. Is the response faithful to context? All claims must be verifiable from context. Think step by step. Answer: YES or NO followed by brief explanation."
-            )
-            print("✅ FaithfulnessEvaluator creado (prompt mejorado)")
+            evaluators["faithfulness"] = FaithfulnessEvaluator(llm=judge_llm)  # ✅ SIN prompt_template
+            print("✅ FaithfulnessEvaluator creado")
         except Exception as e:
             print(f"❌ Error creando FaithfulnessEvaluator: {e}")
         
         try:
-            evaluators["relevancy"] = RelevancyEvaluator(
-                llm=judge_llm,
-                prompt_template="You are an expert evaluator. Rate relevancy 0.0-1.0. Does the response directly address the query? Think step by step. Answer: Score [0.0-1.0] followed by explanation."
-            )
-            print("✅ RelevancyEvaluator creado (prompt mejorado)")
+            evaluators["relevancy"] = RelevancyEvaluator(llm=judge_llm)  # ✅ SIN prompt_template
+            print("✅ RelevancyEvaluator creado")
         except Exception as e:
             print(f"❌ Error creando RelevancyEvaluator: {e}")
         
         try:
-            evaluators["correctness"] = CorrectnessEvaluator(
-                llm=judge_llm,
-                prompt_template="You are an expert evaluator. Rate correctness 0.0-1.0 where 1.0=perfect, 0.8=good, 0.6=fair, 0.4=poor, 0.0=wrong. Think step by step. Answer: Score [0.0-1.0] followed by explanation."
-            )
-            print("✅ CorrectnessEvaluator creado (prompt mejorado)")
+            evaluators["correctness"] = CorrectnessEvaluator(llm=judge_llm)  # ✅ SIN prompt_template
+            print("✅ CorrectnessEvaluator creado")
         except Exception as e:
             print(f"⚠️ CorrectnessEvaluator no disponible: {e}")
         
