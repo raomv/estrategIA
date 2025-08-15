@@ -250,9 +250,12 @@ def academic_llamaindex_evaluation(request: CompareRequest, config: dict):
                                 if metric_name == "correctness" and score is None:
                                     import re
                                     
-                                    # ✅ LIMPIAR <think> TAGS ANTES DE PARSING
-                                    clean_feedback = re.sub(r'<think>.*?</think>', '', feedback, flags=re.DOTALL)
-                                    print(f"      🧹 Feedback limpio (sin <think>): {clean_feedback[:100]}...")
+                                    # ✅ BUSCAR PRIMERO DENTRO DE <think> TAGS
+                                    think_content = ""
+                                    think_match = re.search(r'<think>(.*?)</think>', feedback, flags=re.DOTALL)
+                                    if think_match:
+                                        think_content = think_match.group(1)
+                                        print(f"      🧠 Contenido <think>: {think_content}")
                                     
                                     score_patterns = [
                                         r'\b(\d+\.?\d*)\s*(?:out of|/)\s*5',  # "4.0 out of 5"
@@ -261,28 +264,34 @@ def academic_llamaindex_evaluation(request: CompareRequest, config: dict):
                                         r'\b(\d+\.?\d*)\b'                    # cualquier número
                                     ]
                                     
-                                    for pattern in score_patterns:
-                                        score_match = re.search(pattern, clean_feedback, re.IGNORECASE)
-                                        if score_match:
-                                            try:
-                                                extracted_score = float(score_match.group(1))
-                                                print(f"      🔧 Score extraído del feedback: {extracted_score}")
-                                                
-                                                # ✅ NORMALIZACIÓN CORRECTA SIN REDONDEO AGRESIVO
-                                                if extracted_score > 1:
-                                                    # Asumimos escala de 5 puntos
-                                                    score = extracted_score / 5.0
-                                                    print(f"      🔧 Score normalizado (escala 5): {score:.3f}")
-                                                else:
-                                                    # Ya está en escala 0-1
-                                                    score = extracted_score
-                                                    print(f"      🔧 Score ya normalizado: {score:.3f}")
-                                                
-                                                # ✅ LÍMITE MÁXIMO SIN REDONDEO AGRESIVO
-                                                score = min(score, 1.0)
-                                                break
-                                            except ValueError:
-                                                continue
+                                    # ✅ BUSCAR PRIMERO EN <think>, LUEGO EN FEEDBACK COMPLETO
+                                    search_areas = [think_content, feedback] if think_content else [feedback]
+                                    
+                                    for search_text in search_areas:
+                                        for pattern in score_patterns:
+                                            score_match = re.search(pattern, search_text, re.IGNORECASE)
+                                            if score_match:
+                                                try:
+                                                    extracted_score = float(score_match.group(1))
+                                                    print(f"      🔧 Score extraído de {'<think>' if search_text == think_content else 'feedback'}: {extracted_score}")
+                                                    
+                                                    # ✅ NORMALIZACIÓN CORRECTA SIN REDONDEO AGRESIVO
+                                                    if extracted_score > 1:
+                                                        # Asumimos escala de 5 puntos
+                                                        score = extracted_score / 5.0
+                                                        print(f"      🔧 Score normalizado (escala 5): {score:.3f}")
+                                                    else:
+                                                        # Ya está en escala 0-1
+                                                        score = extracted_score
+                                                        print(f"      🔧 Score ya normalizado: {score:.3f}")
+                                                    
+                                                    # ✅ LÍMITE MÁXIMO SIN REDONDEO AGRESIVO
+                                                    score = min(score, 1.0)
+                                                    break
+                                                except ValueError:
+                                                    continue
+                                        if score is not None:
+                                            break
                         
                         # ✅ CONVERSIÓN FINAL CON NORMALIZACIÓN UNIVERSAL
                         if score is None and passing is not None:
