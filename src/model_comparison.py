@@ -399,42 +399,168 @@ def academic_llamaindex_evaluation(request: CompareRequest, config: dict):
         }
 
 def evaluate_retrieval_metrics(query_engine, user_query, config):
-    """Evalúa sistema de retrieval de forma simplificada"""
+    """Evalúa retrieval con métricas label-free adaptado al proyecto"""
+    import time
+    import numpy as np
+    from itertools import combinations
+    
     try:
-        print("🔍 === EVALUACIÓN DEL SISTEMA DE RETRIEVAL ===")
-        print(f"📄 Modelo de Embeddings: {config.get('embedding_model', 'fastembed')}")
-        print(f"🗄️ Vector Store: Qdrant")
-        print(f"❓ Query: '{user_query[:50]}...'")
+        print("🔍 === EVALUACIÓN DE RETRIEVAL (LABEL-FREE) ===")
         
-        # ✅ EVALUACIÓN SIMPLIFICADA que SÍ FUNCIONA
+        # ✅ RETRIEVAL con timing
         retriever = query_engine.retriever
-        retrieved_nodes = retriever.retrieve(user_query)
-        retrieved_count = len(retrieved_nodes)
+        t0 = time.time()
+        nodes = retriever.retrieve(user_query)
+        t1 = time.time()
+        retrieval_time_ms = round((t1 - t0) * 1000.0, 2)
         
-        # Métricas básicas
-        hit_rate = 1.0 if retrieved_count > 0 else 0.0
-        mrr = 1.0 if retrieved_count > 0 else 0.0
+        k = len(nodes)
+        print(f"📄 Documentos recuperados: {k} en {retrieval_time_ms}ms")
         
-        print(f"   📊 Hit Rate: {hit_rate:.3f}")
-        print(f"   📊 MRR: {mrr:.3f}")
-        print(f"   📄 Docs recuperados: {retrieved_count}")
+        if k == 0:
+            return {
+                "query": user_query,
+                "retrieved_count": 0,
+                "retrieval_time_ms": retrieval_time_ms,
+                "error": "No se recuperaron documentos"
+            }
         
-        return {
+        # ✅ EXTRAER SCORES (compatibility con tu setup)
+        scores = []
+        for i, node in enumerate(nodes):
+            score = getattr(node, 'score', 0.0)
+            print(f"   📄 Doc {i+1}: score={score:.4f}")
+            scores.append(float(score))
+        
+        # ✅ MÉTRICAS BASADAS EN SCORES
+        scores_sorted = sorted(scores, reverse=True)
+        score_at_1 = scores_sorted[0]
+        mean_score = float(np.mean(scores))
+        var_score = float(np.var(scores)) if k > 1 else 0.0
+        margin_at_1 = float(scores_sorted[0] - scores_sorted[1]) if k > 1 else score_at_1
+        
+        threshold = float(config.get("similarity_threshold", 0.7))
+        accept_rate = float(np.mean([s >= threshold for s in scores]))
+        
+        print(f"📊 Score@1: {score_at_1:.4f}")
+        print(f"📊 Mean Score: {mean_score:.4f}")
+        print(f"📊 Accept Rate@{threshold}: {accept_rate:.4f}")
+        
+        # ✅ MÉTRICAS DE EMBEDDINGS (adaptado a tu proyecto)
+        try:
+            # Acceder al embed_model desde el query_engine
+            embed_model = None
+            if hasattr(query_engine, '_service_context') and hasattr(query_engine._service_context, 'embed_model'):
+                embed_model = query_engine._service_context.embed_model
+            elif hasattr(query_engine, 'retriever') and hasattr(query_engine.retriever, '_embed_model'):
+                embed_model = query_engine.retriever._embed_model
+            
+            if embed_model:
+                # Query embedding
+                q_emb = np.array(embed_model.get_query_embedding(user_query), dtype=np.float32)
+                
+                # Doc embeddings - intentar diferentes métodos
+                doc_embs = []
+                for node in nodes:
+                    try:
+                        # Método 1: embedding directo en node
+                        if hasattr(node, 'embedding') and node.embedding is not None:
+                            doc_embs.append(np.array(node.embedding, dtype=np.float32))
+                        # Método 2: desde node.node
+                        elif hasattr(node, 'node') and hasattr(node.node, 'embedding') and node.node.embedding:
+                            doc_embs.append(np.array(node.node.embedding, dtype=np.float32))
+                        # Método 3: regenerar embedding del texto
+                        else:
+                            text = getattr(node, 'text', getattr(node, 'content', ''))
+                            if hasattr(node, 'node'):
+                                text = getattr(node.node, 'text', text)
+                            if text:
+                                emb = embed_model.get_text_embedding(text)
+                                doc_embs.append(np.array(emb, dtype=np.float32))
+                    except Exception as e:
+                        print(f"⚠️ Error obteniendo embedding para doc: {e}")
+                        continue
+                
+                if doc_embs and len(doc_embs) == k:
+                    # Query-Doc similarities
+                    qd_sims = []
+                    for doc_emb in doc_embs:
+                        sim = np.dot(q_emb, doc_emb) / (np.linalg.norm(q_emb) * np.linalg.norm(doc_emb))
+                        qd_sims.append(float(sim))
+                    
+                    qd_mean = float(np.mean(qd_sims))
+                    qd_max = float(np.max(qd_sims))
+                    
+                    # Doc-Doc coherence
+                    if k > 1:
+                        dd_sims = []
+                        for i in range(k):
+                            for j in range(i+1, k):
+                                sim = np.dot(doc_embs[i], doc_embs[j]) / (
+                                    np.linalg.norm(doc_embs[i]) * np.linalg.norm(doc_embs[j])
+                                )
+                                dd_sims.append(float(sim))
+                        docdoc_coherence = float(np.mean(dd_sims))
+                        diversity = float(1.0 - docdoc_coherence)
+                    else:
+                        docdoc_coherence = 1.0
+                        diversity = 0.0
+                    
+                    print(f"📊 Query-Doc Mean: {qd_mean:.4f}")
+                    print(f"📊 Doc-Doc Coherence: {docdoc_coherence:.4f}")
+                    print(f"📊 Diversity: {diversity:.4f}")
+                    
+                else:
+                    print("⚠️ No se pudieron obtener embeddings para métricas geométricas")
+                    qd_mean = qd_max = docdoc_coherence = diversity = None
+            else:
+                print("⚠️ No se pudo acceder al embed_model")
+                qd_mean = qd_max = docdoc_coherence = diversity = None
+                
+        except Exception as e:
+            print(f"⚠️ Error calculando métricas de embeddings: {e}")
+            qd_mean = qd_max = docdoc_coherence = diversity = None
+        
+        # ✅ MÉTRICAS OPERACIONALES
+        unique_sources = len(set(
+            getattr(node, 'doc_id', getattr(getattr(node, 'node', node), 'doc_id', f'doc_{i}'))
+            for i, node in enumerate(nodes)
+        ))
+        
+        result = {
             "query": user_query,
-            "hit_rate": hit_rate,
-            "mrr": mrr,
-            "retrieved_count": retrieved_count,
-            "interpretation": {
-                "hit_rate_status": "success" if hit_rate == 1.0 else "warning",
-                "mrr_quality": "excellent" if mrr > 0.8 else "good"
-            },
+            "retrieved_count": k,
+            "retrieval_time_ms": retrieval_time_ms,
+            "score_at_1": round(score_at_1, 4),
+            "mean_score": round(mean_score, 4),
+            "var_score": round(var_score, 6),
+            "margin_at_1": round(margin_at_1, 4),
+            "accept_rate_at_threshold": round(accept_rate, 4),
+            "threshold_used": threshold,
+            "unique_sources": unique_sources,
             "metadata": {
                 "embedding_model": config.get("embedding_model", "fastembed"),
-                "vector_store": "qdrant",
-                "evaluation_timestamp": time.time()
+                "vector_store": "qdrant", 
+                "evaluation_timestamp": time.time(),
+                "similarity_top_k": config.get("similarity_top_k", 3)
             }
         }
         
+        # Añadir métricas de embeddings si están disponibles
+        if qd_mean is not None:
+            result.update({
+                "qd_mean": round(qd_mean, 4),
+                "qd_max": round(qd_max, 4),
+                "docdoc_coherence": round(docdoc_coherence, 4),
+                "diversity": round(diversity, 4)
+            })
+        
+        return result
+        
     except Exception as e:
-        print(f"❌ Error en retrieval: {e}")
-        return {"error": str(e), "query": user_query, "hit_rate": 0.0, "mrr": 0.0}
+        print(f"❌ Error en evaluate_retrieval_metrics: {e}")
+        return {
+            "query": user_query,
+            "error": str(e),
+            "retrieved_count": 0
+        }
