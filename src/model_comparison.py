@@ -13,7 +13,7 @@ import time
 from llama_index.llms.ollama import Ollama
 from cache_manager import get_cache_manager
 from rag import RAG
-from .ragas_integration import calculate_ragas_metrics  # NUEVO IMPORT
+from ragas_integration import calculate_ragas_metrics  # NUEVO IMPORT
 
 # ✅ AÑADIR ESTAS DOS LÍNEAS:
 import nest_asyncio
