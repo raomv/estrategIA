@@ -110,13 +110,23 @@ def calculate_ragas_metrics(user_query, model_responses, contexts, judge_respons
                     # Fallback
                     return 0.0
                 
-                # ✅ PROCESAR RESULTADOS SANITIZADOS
-                ragas_results[model_name] = {
-                    "ragas_faithfulness": sanitize_ragas_value(result.get("faithfulness", 0.0)),
-                    "ragas_answer_relevancy": sanitize_ragas_value(result.get("answer_relevancy", 0.0)),
-                    "ragas_context_precision": sanitize_ragas_value(result.get("context_precision", 0.0)),
-                    "ragas_context_recall": sanitize_ragas_value(result.get("context_recall", 0.0))
-                }
+                # ✅ PROCESAR RESULTADOS SANITIZADOS - ACCESO DIRECTO
+                try:
+                    ragas_results[model_name] = {
+                        "ragas_faithfulness": sanitize_ragas_value(result["faithfulness"]),
+                        "ragas_answer_relevancy": sanitize_ragas_value(result["answer_relevancy"]),
+                        "ragas_context_precision": sanitize_ragas_value(result["context_precision"]),
+                        "ragas_context_recall": sanitize_ragas_value(result["context_recall"])
+                    }
+                except KeyError as e:
+                    print(f"⚠️ Métrica faltante en resultado RAGAS: {e}")
+                    ragas_results[model_name] = {
+                        "ragas_faithfulness": 0.0,
+                        "ragas_answer_relevancy": 0.0,
+                        "ragas_context_precision": 0.0,
+                        "ragas_context_recall": 0.0,
+                        "ragas_error": f"Missing metric: {e}"
+                    }
                 
                 print(f"✅ RAGAS calculado para {model_name}: {ragas_results[model_name]}")
                 
