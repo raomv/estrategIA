@@ -25,9 +25,9 @@ def calculate_ragas_metrics(user_query, model_responses, contexts, judge_respons
         
         # ✅ IMPORTS CORRECTOS PARA RAGAS 0.2.0 CON LLAMAINDEX
         try:
-            from ragas.llms.base import LlamaIndexLLM
-            from ragas.embeddings.base import LlamaIndexEmbedding
-            print("✅ Imports desde .base funcionando")
+            from ragas.llms.base import LlamaIndexLLMWrapper
+            from ragas.embeddings.base import LlamaIndexEmbeddingsWrapper
+            print("✅ Imports correctos desde .base funcionando")
         except ImportError as e:
             print(f"❌ No se pudo importar desde .base: {e}")
             return {}
@@ -40,13 +40,14 @@ def calculate_ragas_metrics(user_query, model_responses, contexts, judge_respons
         from ragas import evaluate
         from ragas.metrics import faithfulness, answer_relevancy, context_precision, context_recall
         
-        ragas_llm = LlamaIndexLLM(llm=judge_llm)
+        # Usar los wrappers correctos
+        ragas_llm = LlamaIndexLLMWrapper(llm=judge_llm)
         
         # ✅ USAR EL MISMO EMBED_MODEL QUE EL PROYECTO
         from cache_manager import get_cache_manager
         cache_manager = get_cache_manager()
         embed_model = cache_manager.get_cached_embedding_model()
-        ragas_embeddings = LlamaIndexEmbedding(embeddings=embed_model)
+        ragas_embeddings = LlamaIndexEmbeddingsWrapper(embeddings=embed_model)
         
         # Configurar métricas RAGAS
         faithfulness.llm = ragas_llm
