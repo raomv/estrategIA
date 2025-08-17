@@ -29,9 +29,6 @@ from llama_index.core.evaluation import (
     GuidelineEvaluator
 )
 
-# Asegúrate de que tengas este import:
-from schemas import CompareModelsRequest
-
 # Obtener instancia del cache_manager
 cache_manager = get_cache_manager()
 
@@ -72,8 +69,8 @@ def get_available_models(config):
         print(f"❌ Error general obteniendo modelos: {e}")
         return [config.get("llm_name", "deepseek-r1:1.5b")]
 
-# Y que la función use CompareModelsRequest:
-def academic_llamaindex_evaluation(request: CompareModelsRequest, config: dict):
+# Y que la función use CompareRequest:
+def academic_llamaindex_evaluation(request: CompareRequest, config: dict):
     """
     Evaluación académica usando LlamaIndex: Juez evalúa respuestas, no las genera.
     """
