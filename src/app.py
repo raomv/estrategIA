@@ -184,7 +184,7 @@ async def process_chat(request: ChatRequest):
         raise HTTPException(status_code=500, detail=f"Error al procesar el mensaje: {str(e)}")
 
 @app.post("/compare-models")
-async def compare_models(request: CompareModelsRequest):
+async def compare_models(request: CompareRequest):
     """Compara respuestas usando evaluación académica LlamaIndex con modelo juez."""
     try:
         logger.info("=== INICIANDO EVALUACIÓN ACADÉMICA ===")
