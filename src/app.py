@@ -15,7 +15,7 @@ from pydantic import BaseModel, Field
 import yaml
 from llama_index.llms.ollama import Ollama
 from rag import RAG
-from schemas import CompareModelsRequest  # ← Cambiado a schemas
+from model_comparison import CompareRequest
 from llama_index.core.settings import Settings
 import logging
 import tempfile
