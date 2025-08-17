@@ -214,14 +214,13 @@ async def compare_models(request: CompareRequest):
         # Usar evaluación académica con LlamaIndex
         from model_comparison import academic_llamaindex_evaluation
         
-        eval_config = {
+        config.update({
             "similarity_threshold": 0.7,
             "max_retrievals": 5,
             "include_ragas_metrics": request.include_ragas_metrics,
-            "embedding_model": config["embedding_model"]  # ← Ahora usa el global
-        }
+        })
         
-        result = academic_llamaindex_evaluation(request, eval_config)
+        result = academic_llamaindex_evaluation(request, config)
         
         if "error" in result:
             logger.error(f"Error en evaluación: {result['error']}")
