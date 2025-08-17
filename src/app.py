@@ -227,12 +227,7 @@ async def compare_models(request: CompareRequest):
             "include_ragas_metrics": request.include_retrieval_metrics  # NUEVO PARÁMETRO
         }
         
-        result = academic_llamaindex_evaluation(
-            user_query=request.message,
-            models=request.models,
-            judge_model=request.judge_model,
-            config=config
-        )
+        result = academic_llamaindex_evaluation(request, config)
         
         if "error" in result:
             logger.error(f"Error en evaluación: {result['error']}")
