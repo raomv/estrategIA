@@ -22,6 +22,7 @@ import tempfile
 import os
 import shutil
 
+
 config_file = "config.yml"
 
 with open(config_file, "r") as conf:
@@ -224,7 +225,8 @@ async def compare_models(request: CompareRequest):
         config = {
             "similarity_threshold": 0.7,
             "max_retrievals": 5,
-            "include_ragas_metrics": request.include_retrieval_metrics  # NUEVO PARÁMETRO
+            "include_ragas_metrics": request.include_retrieval_metrics,  # NUEVO PARÁMETRO
+            "embedding_model": config["embedding_model"]
         }
         
         result = academic_llamaindex_evaluation(request, config)
