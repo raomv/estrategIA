@@ -161,6 +161,33 @@ def academic_llamaindex_evaluation(request: CompareRequest, config: dict):
         
         print(f"✅ Conectado a índice existente: {collection_name}")
         
+        # ✅ EXTRAER CONTEXTOS UNA VEZ ANTES DEL BUCLE (para RAGAS)
+        print(f"🔍 Extrayendo contextos de Qdrant para RAGAS...")
+        
+        # Usar el primer modelo solo para extraer contextos (sin almacenar respuesta)
+        temp_llm = Ollama(model=models_to_compare[0], url=config["llm_url"], request_timeout=300.0)
+        temp_query_engine = shared_index.as_query_engine(
+            llm=temp_llm,
+            similarity_top_k=config.get("similarity_top_k", 3),
+            response_mode="tree_summarize"
+        )
+        
+        # Query solo para extraer contextos
+        temp_response = temp_query_engine.query(user_question)
+        shared_retrieved_contexts = []
+        
+        if hasattr(temp_response, 'source_nodes') and temp_response.source_nodes:
+            for node in temp_response.source_nodes:
+                shared_retrieved_contexts.append(node.text)
+            print(f"✅ Contextos extraídos para RAGAS: {len(shared_retrieved_contexts)} fragmentos")
+            # Debug: mostrar preview de contextos
+            for i, ctx in enumerate(shared_retrieved_contexts[:2]):
+                preview = ctx[:150] + "..." if len(ctx) > 150 else ctx
+                print(f"   📄 Context {i+1}: {preview}")
+        else:
+            print(f"⚠️ WARNING: No se recuperaron contexts de Qdrant para RAGAS")
+            shared_retrieved_contexts = []
+        
         results = {}
         metrics = {}
         
@@ -373,41 +400,39 @@ def academic_llamaindex_evaluation(request: CompareRequest, config: dict):
             )
             print(f"🔍 === EVALUACIÓN DE RETRIEVAL COMPLETADA ===\n")
         
-        # ✅ ÚNICA MODIFICACIÓN - AÑADIR MÉTRICAS RAGAS
+        # ✅ ÚNICA MODIFICACIÓN - AÑADIR MÉTRICAS RAGAS CON CONTEXTOS REALES
         try:
             if config.get("include_ragas_metrics", False):
                 print("🎯 Calculating RAGAS metrics...")
+                print(f"🎯 Contextos disponibles para RAGAS: {len(shared_retrieved_contexts)} fragmentos")
                 
                 # Obtener mejor respuesta como ground truth
                 best_response_text = ""
-                if results:  # ← CAMBIO: 'responses' → 'results'
-                    # Usar la primera respuesta como referencia o la mejor puntuada
-                    first_model = list(results.keys())[0]  # ← CAMBIO: 'responses' → 'results'
-                    best_response_text = str(results[first_model])  # ← CAMBIO: acceso directo
+                if results:
+                    first_model = list(results.keys())[0]
+                    best_response_text = str(results[first_model])
                 
-                # Calcular métricas RAGAS
+                # ✅ PASAR LOS CONTEXTOS REALES DE QDRANT
                 ragas_metrics = calculate_ragas_metrics(
                     user_query=user_question,
                     model_responses=results,
-                    contexts=[],
+                    contexts=shared_retrieved_contexts,  # ✅ CONTEXTOS REALES EN LUGAR DE []
                     judge_response=best_response_text,
                     config={
-                        "judge_model": request.judge_model,  # ✅ PASAR EL JUEZ SELECCIONADO
-                        "llm_url": config["llm_url"]         # ✅ PASAR LA URL
+                        "judge_model": request.judge_model,
+                        "llm_url": config["llm_url"]
                     }
                 )
                 
                 # Añadir métricas RAGAS a resultados existentes
                 for model_name, ragas_data in ragas_metrics.items():
-                    if model_name in results:  # ← CAMBIO: 'responses' → 'results'
-                        # Como 'results' tiene strings, añadir a 'metrics'
+                    if model_name in results:
                         if model_name in metrics:
                             metrics[model_name].update(ragas_data)
-                        print(f"Added RAGAS metrics to {model_name}: {ragas_data}")  # ← CAMBIO: 'logger' → 'print'
+                        print(f"Added RAGAS metrics to {model_name}: {ragas_data}")
                 
         except Exception as e:
-            print(f"❌ RAGAS evaluation failed, continuing without RAGAS metrics: {e}")
-            # Si RAGAS falla, el flujo continúa normalmente
+            print(f"❌ RAGAS evaluation failed: {e}")
             pass
         
         return {

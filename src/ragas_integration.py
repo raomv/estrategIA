@@ -80,35 +80,15 @@ def calculate_ragas_metrics(user_query, model_responses, contexts, judge_respons
                     metrics=[faithfulness, answer_relevancy, context_precision, context_recall]
                 )
                 
-                # 🔍 DEBUG COMPLETO - VER FORMATO EXACTO DE RAGAS
-                print(f"\n🔍 === DEBUG RAGAS PARA {model_name} ===")
-                print(f"Tipo de resultado: {type(result)}")
-                print(f"Resultado completo: {result}")
+                # ✅ FORMATO CORRECTO - Los valores ya son float
+                ragas_results[model_name] = {
+                    "ragas_faithfulness": result["faithfulness"],
+                    "ragas_answer_relevancy": result["answer_relevancy"],
+                    "ragas_context_precision": result["context_precision"],
+                    "ragas_context_recall": result["context_recall"]
+                }
                 
-                if hasattr(result, 'keys'):
-                    print(f"Keys disponibles: {list(result.keys())}")
-                    
-                    for key in result.keys():
-                        value = result[key]
-                        print(f"  {key}:")
-                        print(f"    Valor: {value}")
-                        print(f"    Tipo: {type(value)}")
-                        if isinstance(value, list):
-                            print(f"    Longitud lista: {len(value)}")
-                            if len(value) > 0:
-                                print(f"    Primer elemento: {value[0]} (tipo: {type(value[0])})")
-                        elif hasattr(value, '__iter__') and not isinstance(value, str):
-                            print(f"    Es iterable: Sí")
-                            try:
-                                list_values = list(value)
-                                print(f"    Como lista: {list_values}")
-                            except:
-                                print(f"    No se pudo convertir a lista")
-                
-                print(f"🔍 === FIN DEBUG PARA {model_name} ===\n")
-                
-                # TEMPORALMENTE - Solo devolver error para ver el debug
-                ragas_results[model_name] = {"debug_completed": True, "raw_result": str(result)}
+                print(f"✅ RAGAS calculado para {model_name}: {ragas_results[model_name]}")
                 
             except Exception as e:
                 print(f"❌ Error calculating RAGAS metrics for {model_name}: {e}")
