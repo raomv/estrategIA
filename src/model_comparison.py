@@ -376,34 +376,33 @@ def academic_llamaindex_evaluation(request: CompareRequest, config: dict):
         # ✅ ÚNICA MODIFICACIÓN - AÑADIR MÉTRICAS RAGAS
         try:
             if config.get("include_ragas_metrics", False):
-                logger.info("Calculating RAGAS metrics...")
+                print("🎯 Calculating RAGAS metrics...")
                 
                 # Obtener mejor respuesta como ground truth
                 best_response_text = ""
-                if responses:
+                if results:  # ← CAMBIO: 'responses' → 'results'
                     # Usar la primera respuesta como referencia o la mejor puntuada
-                    first_model = list(responses.keys())[0]
-                    if hasattr(responses[first_model]['response'], 'response'):
-                        best_response_text = responses[first_model]['response'].response
-                    else:
-                        best_response_text = str(responses[first_model]['response'])
+                    first_model = list(results.keys())[0]  # ← CAMBIO: 'responses' → 'results'
+                    best_response_text = str(results[first_model])  # ← CAMBIO: acceso directo
                 
                 # Calcular métricas RAGAS
                 ragas_metrics = calculate_ragas_metrics(
-                    user_query=user_query,
-                    model_responses=responses,
-                    contexts=contexts if contexts else [],
+                    user_query=user_question,  # ← CAMBIO: 'user_query' → 'user_question'
+                    model_responses=results,   # ← CAMBIO: 'responses' → 'results'
+                    contexts=[],              # ← CAMBIO: contexts vacíos por ahora
                     judge_response=best_response_text
                 )
                 
                 # Añadir métricas RAGAS a resultados existentes
                 for model_name, ragas_data in ragas_metrics.items():
-                    if model_name in responses:
-                        responses[model_name].update(ragas_data)
-                        logger.info(f"Added RAGAS metrics to {model_name}: {ragas_data}")
+                    if model_name in results:  # ← CAMBIO: 'responses' → 'results'
+                        # Como 'results' tiene strings, añadir a 'metrics'
+                        if model_name in metrics:
+                            metrics[model_name].update(ragas_data)
+                        print(f"Added RAGAS metrics to {model_name}: {ragas_data}")  # ← CAMBIO: 'logger' → 'print'
                 
         except Exception as e:
-            logger.error(f"RAGAS evaluation failed, continuing without RAGAS metrics: {e}")
+            print(f"❌ RAGAS evaluation failed, continuing without RAGAS metrics: {e}")
             # Si RAGAS falla, el flujo continúa normalmente
             pass
         
