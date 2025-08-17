@@ -80,12 +80,42 @@ def calculate_ragas_metrics(user_query, model_responses, contexts, judge_respons
                     metrics=[faithfulness, answer_relevancy, context_precision, context_recall]
                 )
                 
-                # ✅ FORMATO CORRECTO - Los valores ya son float
+                # ✅ SANITIZAR RESULTADOS PARA JSON
+                def sanitize_ragas_value(value):
+                    """Convierte valores RAGAS a formato JSON-serializable"""
+                    import math
+                    import numpy as np
+                    
+                    # Si es lista, tomar primer elemento
+                    if isinstance(value, list):
+                        if len(value) > 0:
+                            value = value[0]
+                        else:
+                            return 0.0
+                    
+                    # Convertir numpy types a Python natives
+                    if isinstance(value, np.ndarray):
+                        value = float(value.item())
+                    elif hasattr(value, 'item'):  # numpy scalar
+                        value = float(value.item())
+                    elif isinstance(value, (np.float64, np.float32, np.int64, np.int32)):
+                        value = float(value)
+                    
+                    # Manejar NaN, inf, -inf
+                    if isinstance(value, (int, float)):
+                        if math.isnan(value) or math.isinf(value):
+                            return 0.0
+                        return round(float(value), 4)
+                    
+                    # Fallback
+                    return 0.0
+                
+                # ✅ PROCESAR RESULTADOS SANITIZADOS
                 ragas_results[model_name] = {
-                    "ragas_faithfulness": result["faithfulness"],
-                    "ragas_answer_relevancy": result["answer_relevancy"],
-                    "ragas_context_precision": result["context_precision"],
-                    "ragas_context_recall": result["context_recall"]
+                    "ragas_faithfulness": sanitize_ragas_value(result.get("faithfulness", 0.0)),
+                    "ragas_answer_relevancy": sanitize_ragas_value(result.get("answer_relevancy", 0.0)),
+                    "ragas_context_precision": sanitize_ragas_value(result.get("context_precision", 0.0)),
+                    "ragas_context_recall": sanitize_ragas_value(result.get("context_recall", 0.0))
                 }
                 
                 print(f"✅ RAGAS calculado para {model_name}: {ragas_results[model_name]}")
