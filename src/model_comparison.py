@@ -387,10 +387,14 @@ def academic_llamaindex_evaluation(request: CompareRequest, config: dict):
                 
                 # Calcular métricas RAGAS
                 ragas_metrics = calculate_ragas_metrics(
-                    user_query=user_question,  # ← CAMBIO: 'user_query' → 'user_question'
-                    model_responses=results,   # ← CAMBIO: 'responses' → 'results'
-                    contexts=[],              # ← CAMBIO: contexts vacíos por ahora
-                    judge_response=best_response_text
+                    user_query=user_question,
+                    model_responses=results,
+                    contexts=[],
+                    judge_response=best_response_text,
+                    config={
+                        "judge_model": request.judge_model,  # ✅ PASAR EL JUEZ SELECCIONADO
+                        "llm_url": config["llm_url"]         # ✅ PASAR LA URL
+                    }
                 )
                 
                 # Añadir métricas RAGAS a resultados existentes
