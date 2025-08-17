@@ -13,6 +13,7 @@ import time
 from llama_index.llms.ollama import Ollama
 from cache_manager import get_cache_manager
 from rag import RAG
+from .ragas_integration import calculate_ragas_metrics  # NUEVO IMPORT
 
 # ✅ AÑADIR ESTAS DOS LÍNEAS:
 import nest_asyncio
@@ -369,6 +370,40 @@ def academic_llamaindex_evaluation(request: CompareRequest, config: dict):
                 config=config
             )
             print(f"🔍 === EVALUACIÓN DE RETRIEVAL COMPLETADA ===\n")
+        
+        # ✅ ÚNICA MODIFICACIÓN - AÑADIR MÉTRICAS RAGAS
+        try:
+            if config.get("include_ragas_metrics", False):
+                logger.info("Calculating RAGAS metrics...")
+                
+                # Obtener mejor respuesta como ground truth
+                best_response_text = ""
+                if responses:
+                    # Usar la primera respuesta como referencia o la mejor puntuada
+                    first_model = list(responses.keys())[0]
+                    if hasattr(responses[first_model]['response'], 'response'):
+                        best_response_text = responses[first_model]['response'].response
+                    else:
+                        best_response_text = str(responses[first_model]['response'])
+                
+                # Calcular métricas RAGAS
+                ragas_metrics = calculate_ragas_metrics(
+                    user_query=user_query,
+                    model_responses=responses,
+                    contexts=contexts if contexts else [],
+                    judge_response=best_response_text
+                )
+                
+                # Añadir métricas RAGAS a resultados existentes
+                for model_name, ragas_data in ragas_metrics.items():
+                    if model_name in responses:
+                        responses[model_name].update(ragas_data)
+                        logger.info(f"Added RAGAS metrics to {model_name}: {ragas_data}")
+                
+        except Exception as e:
+            logger.error(f"RAGAS evaluation failed, continuing without RAGAS metrics: {e}")
+            # Si RAGAS falla, el flujo continúa normalmente
+            pass
         
         return {
             "results": results,

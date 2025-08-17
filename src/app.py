@@ -41,12 +41,13 @@ class ChatRequest(BaseModel):
     collection: Optional[str] = None
     chunk_size: Optional[int] = None  # Nuevo campo opcional
 
-class CompareRequest(BaseModel):
+class CompareModelsRequest(BaseModel):
     message: str
     models: List[str]
     collection: str
     judge_model: str
-    include_retrieval_metrics: bool = False  # ✅ NUEVO CAMPO OPCIONAL
+    include_retrieval_metrics: bool = False
+    include_ragas_metrics: bool = False  # NUEVO CAMPO
 
 # Configurar logging
 logging.basicConfig(
@@ -190,7 +191,7 @@ async def process_chat(request: ChatRequest):
         raise HTTPException(status_code=500, detail=f"Error al procesar el mensaje: {str(e)}")
 
 @app.post("/compare-models")
-async def api_compare_models(request: CompareRequest):
+async def compare_models(request: CompareRequest):
     """Compara respuestas usando evaluación académica LlamaIndex con modelo juez."""
     try:
         logger.info("=== INICIANDO EVALUACIÓN ACADÉMICA ===")
@@ -220,7 +221,18 @@ async def api_compare_models(request: CompareRequest):
         # Usar evaluación académica con LlamaIndex
         from model_comparison import academic_llamaindex_evaluation
         
-        result = academic_llamaindex_evaluation(request, config)
+        config = {
+            "similarity_threshold": 0.7,
+            "max_retrievals": 5,
+            "include_ragas_metrics": request.include_retrieval_metrics  # NUEVO PARÁMETRO
+        }
+        
+        result = academic_llamaindex_evaluation(
+            user_query=request.message,
+            models=request.models,
+            judge_model=request.judge_model,
+            config=config
+        )
         
         if "error" in result:
             logger.error(f"Error en evaluación: {result['error']}")
