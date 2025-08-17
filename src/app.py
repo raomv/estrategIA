@@ -15,7 +15,7 @@ from pydantic import BaseModel, Field
 import yaml
 from llama_index.llms.ollama import Ollama
 from rag import RAG
-from model_comparison import CompareRequest  # ← Remover compare_models, solo CompareRequest
+from schemas import CompareModelsRequest  # ← Cambiado a schemas
 from llama_index.core.settings import Settings
 import logging
 import tempfile
@@ -41,14 +41,6 @@ class ChatRequest(BaseModel):
     model: Optional[str] = None
     collection: Optional[str] = None
     chunk_size: Optional[int] = None  # Nuevo campo opcional
-
-class CompareModelsRequest(BaseModel):
-    message: str
-    models: List[str]
-    collection: str
-    judge_model: str
-    include_retrieval_metrics: bool = False
-    include_ragas_metrics: bool = False  # NUEVO CAMPO
 
 # Configurar logging
 logging.basicConfig(
@@ -192,7 +184,7 @@ async def process_chat(request: ChatRequest):
         raise HTTPException(status_code=500, detail=f"Error al procesar el mensaje: {str(e)}")
 
 @app.post("/compare-models")
-async def compare_models(request: CompareRequest):
+async def compare_models(request: CompareModelsRequest):
     """Compara respuestas usando evaluación académica LlamaIndex con modelo juez."""
     try:
         logger.info("=== INICIANDO EVALUACIÓN ACADÉMICA ===")
