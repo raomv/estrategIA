@@ -448,33 +448,38 @@ def academic_llamaindex_evaluation(request: CompareRequest, config: dict):
         # GENERAR RESPUESTA DE REFERENCIA DEL JUEZ PARA RAGAS
         judge_reference_response = None
         
-        if config.get("include_ragas", True):
+        if config.get("include_ragas_metrics", True):
             print(f"\n🤖 === GENERANDO RESPUESTA DE REFERENCIA DEL JUEZ PARA RAGAS ===")
             
             try:
-                # ✅ USAR EL MISMO PATRÓN QUE LOS OTROS MODELOS EN EL PROYECTO
-                from index_manager import IndexManager
-                from cache_manager import get_cache_manager
+                # ✅ USAR EL MISMO PATRÓN QUE YA FUNCIONA EN TU PROYECTO
+                print(f"🔍 Creando instancia RAG para el juez...")
                 
-                # Obtener cache manager y collection
-                cache_manager = get_cache_manager()
-                embed_model = cache_manager.get_cached_embedding_model()
+                # Crear configuración para el juez (igual que en el resto del código)
+                judge_config = config.copy()
+                judge_config["collection_name"] = collection_name
                 
-                # Crear index manager para el juez
-                index_manager = IndexManager(embed_model=embed_model)
+                # Crear LLM del juez
+                judge_llm_for_response = Ollama(model=judge_model_name, base_url=config["llm_url"], request_timeout=300.0)
                 
-                print(f"🔍 Configurando query engine del juez con colección: {request.collection}")
+                # ✅ CREAR INSTANCIA RAG USANDO TU CLASE EXISTENTE
+                judge_rag_instance = RAG(config_file=judge_config, llm=judge_llm_for_response)
+                judge_index = judge_rag_instance.qdrant_index()
                 
-                # ✅ CREAR QUERY ENGINE DEL JUEZ IGUAL QUE LOS OTROS MODELOS
-                judge_query_engine = index_manager.get_query_engine(
-                    collection_name=request.collection,
-                    llm=judge_llm,
+                if judge_index is None:
+                    raise ValueError(f"No se pudo conectar a la colección {collection_name} para el juez")
+                
+                print(f"✅ Juez conectado a índice: {collection_name}")
+                
+                # ✅ CREAR QUERY ENGINE DEL JUEZ
+                judge_query_engine = judge_index.as_query_engine(
+                    llm=judge_llm_for_response,
                     similarity_top_k=config.get("similarity_top_k", 3),
-                    response_mode="compact"
+                    response_mode="compact"  # Modo más directo para respuesta de referencia
                 )
                 
                 print(f"🤖 Juez generando respuesta de referencia para: '{user_question}'")
-                print(f"📄 Usando misma colección y configuración que otros modelos")
+                print(f"📄 Usando misma colección que otros modelos: {collection_name}")
                 
                 # ✅ EL JUEZ GENERA SU RESPUESTA USANDO EL MISMO CONTEXTO
                 judge_response_obj = judge_query_engine.query(user_question)
@@ -506,7 +511,7 @@ Your answer should be:
 
 Question: {user_question}"""
                     
-                    judge_direct_response = judge_llm.complete(judge_prompt)
+                    judge_direct_response = judge_llm_for_response.complete(judge_prompt)
                     judge_reference_response = str(judge_direct_response).strip()
                     
                     print(f"✅ Respuesta alternativa del juez: {len(judge_reference_response)} chars")
@@ -519,7 +524,7 @@ Question: {user_question}"""
                 judge_reference_response = None
         
         # ✅ SOLO LLAMAR RAGAS SI HAY RESPUESTA DEL JUEZ VÁLIDA Y DIFERENTE
-        if config.get("include_ragas", True) and judge_reference_response and len(judge_reference_response.strip()) > 50:
+        if config.get("include_ragas_metrics", True) and judge_reference_response and len(judge_reference_response.strip()) > 50:
             print(f"\n🎯 === CALCULANDO MÉTRICAS RAGAS ===")
             print(f"🎯 Contextos disponibles para RAGAS: {len(shared_retrieved_contexts)} fragmentos")
             print(f"🎯 RAGAS usando modelo juez: {request.judge_model}")
@@ -566,7 +571,7 @@ Question: {user_question}"""
             else:
                 print(f"⚠️ RAGAS omitido - respuesta del juez muy similar a modelos evaluados")
                 
-        elif config.get("include_ragas", True):
+        elif config.get("include_ragas_metrics", True):
             print(f"⚠️ RAGAS omitido - no hay respuesta válida del juez")
 
         return {
@@ -680,7 +685,7 @@ def evaluate_retrieval_metrics(query_engine, user_query, config):
                         print(f"⚠️ Error obteniendo embedding para doc: {e}")
                         continue
                 
-                if doc_embs and len(doc_embs) == k:
+                if doc_embs and len(doc_embs == k):
                     # Query-Doc similarities
                     qd_sims = []
                     for doc_emb in doc_embs:
