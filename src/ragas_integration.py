@@ -232,7 +232,7 @@ def calculate_ragas_metrics(user_query, model_responses, contexts, judge_respons
                         value = result[key]
                         print(f"   {key}: {value} (tipo: {type(value)})")
                     
-                # ✅ SANITIZACIÓN CON DEBUG
+                # ✅ SANITIZACIÓN MEJORADA PARA NaN
                 def sanitize_ragas_value(value):
                     print(f"      🔧 Sanitizando: {value} (tipo: {type(value)})")
                     
@@ -258,18 +258,18 @@ def calculate_ragas_metrics(user_query, model_responses, contexts, judge_respons
                             print(f"         Lista vacía → 0.0")
                             return 0.0
                     
-                    # Convertir numpy types a Python natives
+                    # Convertir numpy types
                     if isinstance(value, np.ndarray):
                         value = float(value.item())
                         print(f"         ndarray → float: {value}")
-                    elif hasattr(value, 'item'):  # numpy scalar
+                    elif hasattr(value, 'item'):
                         value = float(value.item())
                         print(f"         numpy scalar → float: {value}")
                     elif isinstance(value, (np.float64, np.float32, np.int64, np.int32)):
                         value = float(value)
                         print(f"         numpy type → float: {value}")
                     
-                    # Manejar NaN, inf, -inf
+                    # Verificar NaN DESPUÉS de conversiones
                     if isinstance(value, (int, float)):
                         if math.isnan(value):
                             print(f"         ❌ NaN después de conversión")
@@ -279,10 +279,10 @@ def calculate_ragas_metrics(user_query, model_responses, contexts, judge_respons
                             return 0.0
                         else:
                             sanitized = round(float(value), 4)
-                            print(f"         Valor válido: {sanitized}")                            return sanitized
+                            print(f"         ✅ Valor válido: {sanitized}")
+                            return sanitized
                     
-# Fallback
-                    print(f"         Tipo no reconocido: {type(value)} → 0.0")
+                    print(f"         ❌ Tipo no reconocido: {type(value)} → 0.0")
                     return 0.0
                 
                 # ✅ PROCESAR CADA MÉTRICA INDIVIDUALMENTE
