@@ -93,6 +93,10 @@ def academic_llamaindex_evaluation(request: CompareRequest, config: dict):
         if judge_model_name in models_to_compare:
             raise ValueError("El modelo juez no puede estar en la lista de modelos a comparar")
         
+        # ✅ SOLUCIÓN: Importar directamente en la función
+        from cache_manager import get_cache_manager
+        cache_manager = get_cache_manager()
+        
         # 1. Configurar embeddings una vez
         cache_manager.ensure_embedding_model_ready(config)
         embed_model = cache_manager.get_cached_embedding_model()
