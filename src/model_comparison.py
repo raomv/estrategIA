@@ -474,7 +474,96 @@ def academic_llamaindex_evaluation(request: CompareRequest, config: dict):
         except Exception as e:
             print(f"❌ RAGAS evaluation failed: {e}")
             pass
+
+        # ✅ DESPUÉS DE EVALUAR TODOS LOS MODELOS CON MÉTRICAS NATIVAS
+        # GENERAR RESPUESTA DE REFERENCIA DEL JUEZ PARA RAGAS
+        judge_reference_response = None
         
+        if config.get("include_ragas", True):
+            print(f"\n🤖 === GENERANDO RESPUESTA DE REFERENCIA DEL JUEZ PARA RAGAS ===")
+            
+            try:
+                # ✅ CREAR QUERY ENGINE DEL JUEZ CON EL MISMO ÍNDICE Y CONTEXTO
+                print(f"🔍 Configurando query engine del juez...")
+                
+                judge_query_engine = index.as_query_engine(
+                    llm=judge_llm,  # ← Usar el mismo LLM juez
+                    similarity_top_k=config.get("similarity_top_k", 3),  # ← Mismo top_k
+                    response_mode="compact",  # ← Mismo modo que otros modelos
+                    node_postprocessors=[]  # ← Sin post-procesadores adicionales
+                )
+                
+                print(f"🤖 Juez generando respuesta de referencia para: '{user_question}'")
+                print(f"📄 Usando contextos recuperados: {len(shared_retrieved_contexts)} fragmentos")
+                
+                # ✅ EL JUEZ GENERA SU RESPUESTA USANDO EL MISMO CONTEXTO
+                judge_response_obj = judge_query_engine.query(user_question)
+                judge_reference_response = str(judge_response_obj).strip()
+                
+                print(f"✅ Respuesta del juez generada:")
+                print(f"   📏 Longitud: {len(judge_reference_response)} caracteres")
+                print(f"   📝 Preview: {judge_reference_response[:300]}...")
+                
+                # ✅ VERIFICAR QUE LA RESPUESTA ES VÁLIDA
+                if len(judge_reference_response) < 50:
+                    print(f"⚠️ Respuesta del juez muy corta, generando alternativa...")
+                    
+                    # Prompt directo si la respuesta automática es muy corta
+                    judge_prompt = f"""Based on the provided context, answer this question comprehensively: {user_question}
+
+Please provide a detailed, accurate, and well-structured response that addresses all aspects of the question."""
+                    
+                    judge_direct_response = judge_llm.complete(judge_prompt)
+                    judge_reference_response = str(judge_direct_response).strip()
+                    
+                    print(f"✅ Respuesta alternativa del juez: {len(judge_reference_response)} chars")
+                
+            except Exception as judge_gen_error:
+                print(f"❌ Error generando respuesta del juez: {judge_gen_error}")
+                import traceback
+                print(f"Traceback: {traceback.format_exc()[:400]}...")
+                judge_reference_response = None
+
+        # ✅ MÉTRICAS RAGAS CON RESPUESTA DE REFERENCIA DEL JUEZ
+        if config.get("include_ragas", True):
+            print(f"\n🎯 === CALCULANDO MÉTRICAS RAGAS ===")
+            print(f"🎯 Contextos disponibles para RAGAS: {len(shared_retrieved_contexts)} fragmentos")
+            print(f"🎯 RAGAS usando modelo juez: {request.judge_model}")
+            
+            if judge_reference_response:
+                print(f"🎯 Respuesta de referencia del juez: {len(judge_reference_response)} chars")
+                print(f"📝 Preview referencia: {judge_reference_response[:200]}...")
+            else:
+                print(f"⚠️ No hay respuesta de referencia del juez, RAGAS usará ground truth alternativo")
+            
+            try:
+                ragas_metrics = calculate_ragas_metrics(
+                    user_query=user_question,
+                    model_responses=results,  # ← Respuestas de todos los modelos
+                    contexts=shared_retrieved_contexts,  # ← Mismo contexto usado por todos
+                    judge_response=judge_reference_response,  # ← Respuesta de referencia del juez
+                    config={
+                        "judge_model": request.judge_model,
+                        "llm_url": config["llm_url"]
+                    }
+                )
+                
+                if ragas_metrics:
+                    print(f"✅ Métricas RAGAS calculadas para {len(ragas_metrics)} modelos")
+                    
+                    # ✅ INTEGRAR MÉTRICAS RAGAS CON EL RESTO
+                    for model_name, ragas_scores in ragas_metrics.items():
+                        if model_name in all_model_metrics:
+                            all_model_metrics[model_name].update(ragas_scores)
+                            print(f"   📊 {model_name}: {len(ragas_scores)} métricas RAGAS añadidas")
+                else:
+                    print(f"⚠️ No se obtuvieron métricas RAGAS")
+                    
+            except Exception as ragas_error:
+                print(f"❌ Error calculando métricas RAGAS: {ragas_error}")
+                import traceback
+                print(f"Traceback RAGAS: {traceback.format_exc()[:400]}...")
+
         return {
             "results": results,
             "metrics": metrics,

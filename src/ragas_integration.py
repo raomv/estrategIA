@@ -66,38 +66,36 @@ def calculate_ragas_metrics(user_query, model_responses, contexts, judge_respons
             try:
                 from datasets import Dataset
                 
-                # ✅ DEBUG COMPLETO - Ver exactamente qué recibe RAGAS
+                # ✅ DEBUG MEJORADO PARA VERIFICAR RESPUESTA DE REFERENCIA
                 print(f"\n🔍 === DEBUG COMPLETO PARA {model_name} ===")
                 print(f"📝 User query ({len(user_query)} chars): {user_query}")
                 print(f"📝 Model response ({len(response_text)} chars): {response_text[:200]}...")
-                print(f"📝 Judge response ({len(str(judge_response)) if judge_response else 0} chars): {str(judge_response)[:200] if judge_response else 'NONE'}...")
+                
+                # ✅ DEBUG ESPECÍFICO DE JUDGE RESPONSE
+                if judge_response:
+                    print(f"📝 Judge reference ({len(str(judge_response))} chars): {str(judge_response)[:200]}...")
+                    print(f"✅ Judge response válido: {len(str(judge_response).strip()) > 20}")
+                else:
+                    print(f"❌ Judge response: NONE - Se usará ground truth alternativo")
+                
                 print(f"📝 Contexts count: {len(contexts)}")
                 
-                if contexts:
-                    for i, ctx in enumerate(contexts[:3]):  # Mostrar primeros 3 contextos
-                        print(f"   📄 Context {i+1} ({len(ctx)} chars): {ctx[:150]}...")
+                # ✅ GROUND TRUTH CON PREFERENCIA POR RESPUESTA DEL JUEZ
+                if judge_response and len(str(judge_response).strip()) > 20:
+                    ground_truth = str(judge_response).strip()
+                    print(f"✅ Usando respuesta del juez como ground truth")
+                    print(f"📝 Ground truth (juez): {ground_truth[:150]}...")
                 else:
-                    print("   ❌ NO HAY CONTEXTOS")
-                
-                # ✅ VERIFICAR CALIDAD DE DATOS
-                if not user_query or len(user_query.strip()) < 5:
-                    print(f"❌ PROBLEMA: User query muy corto o vacío")
-                
-                if not response_text or len(response_text.strip()) < 10:
-                    print(f"❌ PROBLEMA: Response muy corta o vacía")
-                
-                if not judge_response or len(str(judge_response).strip()) < 10:
-                    print(f"❌ PROBLEMA: Judge response muy corto o vacío: '{judge_response}'")
-                
-                if not contexts or len(contexts) == 0:
-                    print(f"❌ PROBLEMA: No hay contextos")
+                    ground_truth = f"A comprehensive answer addressing: {user_query}"
+                    print(f"⚠️ Usando ground truth alternativo")
+                    print(f"📝 Ground truth (alternativo): {ground_truth}")
                 
                 # ✅ CREAR DATASET CON VERIFICACIÓN
                 data = {
                     "question": [user_query],
                     "answer": [response_text],
                     "contexts": [contexts if contexts else ["No context available"]],
-                    "ground_truth": [str(judge_response)] if judge_response else [response_text]  # Fallback
+                    "ground_truth": [ground_truth]  # ← ÚNICO CAMBIO AQUÍ
                 }
                 
                 print(f"📊 Dataset creado:")
