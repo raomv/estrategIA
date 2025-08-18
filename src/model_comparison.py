@@ -448,18 +448,29 @@ def academic_llamaindex_evaluation(request: CompareRequest, config: dict):
             print(f"\n🤖 === GENERANDO RESPUESTA DE REFERENCIA DEL JUEZ PARA RAGAS ===")
             
             try:
-                # ✅ CREAR QUERY ENGINE DEL JUEZ CON EL MISMO ÍNDICE Y CONTEXTO
-                print(f"🔍 Configurando query engine del juez...")
+                # ✅ USAR EL MISMO PATRÓN QUE LOS OTROS MODELOS EN EL PROYECTO
+                from index_manager import IndexManager
+                from cache_manager import get_cache_manager
                 
-                judge_query_engine = index.as_query_engine(
-                    llm=judge_llm,  # ← Usar el mismo LLM juez
-                    similarity_top_k=config.get("similarity_top_k", 3),  # ← Mismo top_k
-                    response_mode="compact",  # ← Mismo modo que otros modelos
-                    node_postprocessors=[]  # ← Sin post-procesadores adicionales
+                # Obtener cache manager y collection
+                cache_manager = get_cache_manager()
+                embed_model = cache_manager.get_cached_embedding_model()
+                
+                # Crear index manager para el juez
+                index_manager = IndexManager(embed_model=embed_model)
+                
+                print(f"🔍 Configurando query engine del juez con colección: {request.collection}")
+                
+                # ✅ CREAR QUERY ENGINE DEL JUEZ IGUAL QUE LOS OTROS MODELOS
+                judge_query_engine = index_manager.get_query_engine(
+                    collection_name=request.collection,
+                    llm=judge_llm,
+                    similarity_top_k=config.get("similarity_top_k", 3),
+                    response_mode="compact"
                 )
                 
                 print(f"🤖 Juez generando respuesta de referencia para: '{user_question}'")
-                print(f"📄 Usando contextos recuperados: {len(shared_retrieved_contexts)} fragmentos")
+                print(f"📄 Usando misma colección y configuración que otros modelos")
                 
                 # ✅ EL JUEZ GENERA SU RESPUESTA USANDO EL MISMO CONTEXTO
                 judge_response_obj = judge_query_engine.query(user_question)
@@ -472,13 +483,13 @@ def academic_llamaindex_evaluation(request: CompareRequest, config: dict):
                 # ✅ VERIFICAR QUE LA RESPUESTA ES DIFERENTE DE LOS MODELOS
                 is_different = True
                 for model_name, model_response in results.items():
-                    if judge_reference_response == model_response:
+                    if judge_reference_response.strip() == model_response.strip():
                         print(f"⚠️ Respuesta del juez idéntica a {model_name}")
                         is_different = False
                         break
                 
                 if not is_different or len(judge_reference_response) < 50:
-                    print(f"⚠️ Generando respuesta alternativa del juez...")
+                    print(f"⚠️ Generando respuesta alternativa del juez con prompt específico...")
                     
                     # Prompt específico para generar respuesta diferente
                     judge_prompt = f"""You are an expert evaluator. Based on your knowledge and the context provided, provide a comprehensive, authoritative answer to this question: {user_question}
@@ -503,42 +514,54 @@ Question: {user_question}"""
                 print(f"Traceback: {traceback.format_exc()[:400]}...")
                 judge_reference_response = None
         
-        # ✅ SOLO LLAMAR RAGAS SI HAY RESPUESTA DEL JUEZ VÁLIDA
-        if config.get("include_ragas", True) and judge_reference_response:
+        # ✅ SOLO LLAMAR RAGAS SI HAY RESPUESTA DEL JUEZ VÁLIDA Y DIFERENTE
+        if config.get("include_ragas", True) and judge_reference_response and len(judge_reference_response.strip()) > 50:
             print(f"\n🎯 === CALCULANDO MÉTRICAS RAGAS ===")
             print(f"🎯 Contextos disponibles para RAGAS: {len(shared_retrieved_contexts)} fragmentos")
             print(f"🎯 RAGAS usando modelo juez: {request.judge_model}")
             print(f"🎯 Respuesta de referencia del juez: {len(judge_reference_response)} chars")
             print(f"📝 Preview referencia: {judge_reference_response[:200]}...")
             
-            try:
-                ragas_metrics = calculate_ragas_metrics(
-                    user_query=user_question,
-                    model_responses=results,  # ← Respuestas de todos los modelos
-                    contexts=shared_retrieved_contexts,  # ← Mismo contexto usado por todos
-                    judge_response=judge_reference_response,  # ← Respuesta REAL del juez
-                    config={
-                        "judge_model": request.judge_model,
-                        "llm_url": config["llm_url"]
-                    }
-                )
-                
-                if ragas_metrics:
-                    print(f"✅ Métricas RAGAS calculadas para {len(ragas_metrics)} modelos")
-                    
-                    # ✅ INTEGRAR MÉTRICAS RAGAS CON EL RESTO
-                    for model_name, ragas_scores in ragas_metrics.items():
-                        if model_name in metrics:
-                            metrics[model_name].update(ragas_scores)
-                            print(f"   📊 {model_name}: {len(ragas_scores)} métricas RAGAS añadidas")
-                else:
-                    print(f"⚠️ No se obtuvieron métricas RAGAS")
-                    
-            except Exception as ragas_error:
-                print(f"❌ Error calculando métricas RAGAS: {ragas_error}")
-                import traceback
-                print(f"Traceback RAGAS: {traceback.format_exc()[:400]}...")
+            # ✅ VERIFICAR QUE ES DIFERENTE DE CADA MODELO ANTES DE RAGAS
+            different_from_all = True
+            for model_name, model_response in results.items():
+                similarity_ratio = len(set(judge_reference_response.split()) & set(model_response.split())) / max(len(judge_reference_response.split()), len(model_response.split()))
+                print(f"   📊 Similitud con {model_name}: {similarity_ratio:.3f}")
+                if similarity_ratio > 0.9:  # Si más del 90% de palabras son iguales
+                    print(f"   ⚠️ Judge response muy similar a {model_name}")
+                    different_from_all = False
             
+            if different_from_all:
+                try:
+                    ragas_metrics = calculate_ragas_metrics(
+                        user_query=user_question,
+                        model_responses=results,  # ← Respuestas de todos los modelos
+                        contexts=shared_retrieved_contexts,  # ← Mismo contexto usado por todos
+                        judge_response=judge_reference_response,  # ← Respuesta REAL del juez
+                        config={
+                            "judge_model": request.judge_model,
+                            "llm_url": config["llm_url"]
+                        }
+                    )
+                    
+                    if ragas_metrics:
+                        print(f"✅ Métricas RAGAS calculadas para {len(ragas_metrics)} modelos")
+                        
+                        # ✅ INTEGRAR MÉTRICAS RAGAS CON EL RESTO
+                        for model_name, ragas_scores in ragas_metrics.items():
+                            if model_name in metrics:
+                                metrics[model_name].update(ragas_scores)
+                                print(f"   📊 {model_name}: {len(ragas_scores)} métricas RAGAS añadidas")
+                    else:
+                        print(f"⚠️ No se obtuvieron métricas RAGAS")
+                        
+                except Exception as ragas_error:
+                    print(f"❌ Error calculando métricas RAGAS: {ragas_error}")
+                    import traceback
+                    print(f"Traceback RAGAS: {traceback.format_exc()[:400]}...")
+            else:
+                print(f"⚠️ RAGAS omitido - respuesta del juez muy similar a modelos evaluados")
+                
         elif config.get("include_ragas", True):
             print(f"⚠️ RAGAS omitido - no hay respuesta válida del juez")
 
