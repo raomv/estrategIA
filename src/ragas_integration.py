@@ -34,7 +34,7 @@ def calculate_ragas_metrics(user_query, model_responses, contexts, judge_respons
         
         # ✅ CREAR EL MISMO LLM QUE USAN LAS MÉTRICAS NATIVAS
         from llama_index.llms.ollama import Ollama
-        judge_llm = Ollama(model=judge_model_name, base_url=llm_url, request_timeout=300.0)
+        judge_llm = Ollama(model=judge_model_name, base_url=llm_url, request_timeout=600.0)
         
         # ✅ CONFIGURAR RAGAS CON ESE LLM (SOLO LLAMAINDEX)
         from ragas import evaluate
