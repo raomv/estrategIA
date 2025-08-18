@@ -226,7 +226,7 @@ def academic_llamaindex_evaluation(request: CompareRequest, config: dict):
                 else:
                     print(f"      ⚠️ WARNING: No se recuperaron contexts de Qdrant")
 
-                # ✅ EVALUACIÓN CON DEBUGGING COMPLETO
+                # ✅ EVALUACIÓN CON DEBUGGING COMPLETO Y MANEJO DE ERRORES JSON
                 for metric_name, evaluator in evaluators.items():
                     try:
                         print(f"   📊 Evaluando {metric_name}...")
@@ -237,11 +237,51 @@ def academic_llamaindex_evaluation(request: CompareRequest, config: dict):
                                 reference=user_question
                             )
                         elif metric_name == "guideline":
-                            # ✅ NO PASAR CONTEXTS - GuidelineEvaluator los extrae automáticamente
-                            eval_result = evaluator.evaluate_response(
-                                query=user_question,
-                                response=response
-                            )
+                            try:
+                                # ✅ GuidelineEvaluator con manejo específico de errores JSON
+                                eval_result = evaluator.evaluate_response(
+                                    query=user_question,
+                                    response=response
+                                )
+                                
+                                # Extraer score de manera robusta
+                                if hasattr(eval_result, 'passing') and eval_result.passing is not None:
+                                    score = 1.0 if eval_result.passing else 0.0
+                                elif hasattr(eval_result, 'score') and eval_result.score is not None:
+                                    score = float(eval_result.score)
+                                else:
+                                    print(f"      ⚠️ Guideline evaluation sin score válido, usando 0.5")
+                                    score = 0.5
+                                
+                                model_metrics[metric_name] = {
+                                    "score": round(score, 3),
+                                    "feedback": getattr(eval_result, 'feedback', 'No feedback')
+                                }
+                                print(f"      ✅ {metric_name}: {score}")
+                                continue  # Saltar el resto del procesamiento
+                                
+                            except ValueError as json_error:
+                                error_msg = str(json_error)
+                                if "Could not extract json string" in error_msg:
+                                    print(f"      ⚠️ {metric_name} - Error de parsing JSON del modelo juez")
+                                    # Intentar extraer información del texto plano
+                                    if "Passing: false" in error_msg:
+                                        score = 0.0
+                                        print(f"      ✅ Extraído de texto: {metric_name} = 0.0")
+                                    elif "Passing: true" in error_msg:
+                                        score = 1.0
+                                        print(f"      ✅ Extraído de texto: {metric_name} = 1.0")
+                                    else:
+                                        score = 0.5  # Score neutro
+                                        print(f"      ⚠️ No se pudo extraer score, usando neutro: 0.5")
+                                    
+                                    model_metrics[metric_name] = {
+                                        "score": score,
+                                        "feedback": f"JSON parsing error, extracted from text: {error_msg[:200]}"
+                                    }
+                                    continue
+                                else:
+                                    raise json_error
                         else:
                             # faithfulness, relevancy, correctness
                             eval_result = evaluator.evaluate_response(
@@ -249,7 +289,7 @@ def academic_llamaindex_evaluation(request: CompareRequest, config: dict):
                                 response=response
                             )
                         
-                        # ✅ EXTRACCIÓN DE SCORE CORREGIDA
+                        # ✅ RESTO DEL PROCESAMIENTO (CÓDIGO EXISTENTE)
                         score = None
                         if hasattr(eval_result, 'score'):
                             raw_score = eval_result.score

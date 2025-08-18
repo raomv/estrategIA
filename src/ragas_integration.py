@@ -109,40 +109,129 @@ def calculate_ragas_metrics(user_query, model_responses, contexts, judge_respons
                 dataset = Dataset.from_dict(data)
                 print(f"✅ Dataset HuggingFace creado correctamente")
                 
-                # ✅ EVALUAR CON DEBUG DETALLADO
-                print(f"🔄 Iniciando evaluación RAGAS...")
+                # ✅ DEBUG PREVIO A EVALUACIÓN - Verificar configuración COMPLETA
+                print(f"🔍 === VERIFICANDO CONFIGURACIÓN RAGAS ===")
+                print(f"   Judge LLM configurado: {judge_llm}")
+                print(f"   Embed model configurado: {embed_model}")
+                print(f"   Faithfulness LLM: {getattr(faithfulness, 'llm', 'NO CONFIGURADO')}")
+                print(f"   Answer relevancy LLM: {getattr(answer_relevancy, 'llm', 'NO CONFIGURADO')}")
+                print(f"   Answer relevancy embeddings: {getattr(answer_relevancy, 'embeddings', 'NO CONFIGURADO')}")
+                print(f"   Context precision LLM: {getattr(context_precision, 'llm', 'NO CONFIGURADO')}")
+                print(f"   Context recall LLM: {getattr(context_recall, 'llm', 'NO CONFIGURADO')}")
+                print(f"   Context recall embeddings: {getattr(context_recall, 'embeddings', 'NO CONFIGURADO')}")
+                
+                # ✅ TESTE DE COMPONENTES ANTES DE EVALUACIÓN
+                print(f"🔍 === TESTE DE COMPONENTES ===")
+                
+                # Test modelo juez
+                try:
+                    test_response = judge_llm.complete("Test simple")
+                    print(f"   ✅ Modelo juez responde: {str(test_response)[:50]}...")
+                except Exception as test_error:
+                    print(f"   ❌ Modelo juez no responde: {test_error}")
+                
+                # Test embeddings
+                try:
+                    test_embedding = embed_model.get_text_embedding("test embedding")
+                    print(f"   ✅ Embeddings funcionan: {len(test_embedding)} dimensiones")
+                except Exception as embed_error:
+                    print(f"   ❌ Embeddings no funcionan: {embed_error}")
+                
+                # Test ragas wrappers
+                try:
+                    ragas_test = ragas_llm.complete("Test RAGAS wrapper")
+                    print(f"   ✅ RAGAS LLM wrapper funciona: {str(ragas_test)[:50]}...")
+                except Exception as wrapper_error:
+                    print(f"   ❌ RAGAS LLM wrapper falla: {wrapper_error}")
+                
+                # ✅ VERIFICAR DATOS DEL DATASET MÁS DETALLADAMENTE
+                print(f"🔍 === VERIFICANDO DATOS DATASET ===")
+                print(f"   Question: '{data['question'][0]}'")
+                print(f"   Question válida: {len(data['question'][0]) > 5}")
+                print(f"   Answer length: {len(data['answer'][0])}")
+                print(f"   Answer válida: {len(data['answer'][0]) > 10}")
+                print(f"   Contexts count: {len(data['contexts'][0])}")
+                print(f"   Contexts válidos: {len(data['contexts'][0]) > 0 and data['contexts'][0] != ['No context available']}")
+                print(f"   Ground truth length: {len(data['ground_truth'][0])}")
+                print(f"   Ground truth válido: {len(data['ground_truth'][0]) > 10}")
+                
+                # Mostrar contenido real
+                if data['contexts'][0]:
+                    print(f"   Primera context preview: {data['contexts'][0][0][:100]}...")
+                print(f"   Ground truth preview: {data['ground_truth'][0][:100]}...")
+                
+                # ✅ EVALUAR UNA MÉTRICA A LA VEZ PARA IDENTIFICAR PROBLEMAS
+                print(f"🔄 === EVALUACIÓN INDIVIDUAL DE MÉTRICAS ===")
                 
                 try:
-                    result = evaluate(
-                        dataset=dataset,
-                        metrics=[faithfulness, answer_relevancy, context_precision, context_recall]
-                    )
-                    print(f"✅ Evaluación RAGAS completada")
+                    individual_results = {}
                     
-                    # ✅ DEBUG: Inspeccionar resultado crudo
-                    print(f"🔍 Resultado crudo RAGAS:")
-                    print(f"   Tipo: {type(result)}")
-                    print(f"   Contenido: {result}")
+                    metrics_to_test = [
+                        ("faithfulness", faithfulness),
+                        ("answer_relevancy", answer_relevancy), 
+                        ("context_precision", context_precision),
+                        ("context_recall", context_recall)
+                    ]
                     
-                    if hasattr(result, 'keys'):
-                        print(f"   Keys disponibles: {list(result.keys())}")
-                        for key in result.keys():
-                            value = result[key]
-                            print(f"   {key}: {value} (tipo: {type(value)})")
+                    for metric_name, metric_obj in metrics_to_test:
+                        try:
+                            print(f"   🔄 Evaluando {metric_name} individualmente...")
+                            
+                            # Verificar configuración específica de la métrica
+                            if hasattr(metric_obj, 'llm'):
+                                print(f"      LLM configurado: {metric_obj.llm is not None}")
+                            if hasattr(metric_obj, 'embeddings'):
+                                print(f"      Embeddings configurado: {metric_obj.embeddings is not None}")
+                            
+                            individual_result = evaluate(
+                                dataset=dataset,
+                                metrics=[metric_obj]
+                            )
+                            
+                            value = individual_result[metric_name]
+                            print(f"   ✅ {metric_name}: {value} (tipo: {type(value)})")
+                            
+                            # Verificar si es NaN
+                            import math
+                            if isinstance(value, float) and math.isnan(value):
+                                print(f"      ⚠️ {metric_name} devolvió NaN - problema en configuración o datos")
+                            
+                            individual_results[metric_name] = value
+                            
+                        except Exception as individual_error:
+                            print(f"   ❌ {metric_name} falló individualmente: {individual_error}")
+                            import traceback
+                            print(f"      Traceback: {traceback.format_exc()[:300]}...")
+                            individual_results[metric_name] = float('nan')
+                    
+                    # Usar resultados individuales
+                    result = individual_results
+                    print(f"✅ Evaluación individual completada: {result}")
                     
                 except Exception as eval_error:
-                    print(f"❌ ERROR EN EVALUACIÓN RAGAS: {eval_error}")
+                    print(f"❌ ERROR EN EVALUACIÓN INDIVIDUAL: {eval_error}")
                     import traceback
                     traceback.print_exc()
                     
-                    # Crear resultado por defecto para continuar debug
+                    # Crear resultado por defecto
                     result = {
-                        "faithfulness": 0.0,
-                        "answer_relevancy": 0.0,
-                        "context_precision": 0.0,
-                        "context_recall": 0.0
+                        "faithfulness": float('nan'),
+                        "answer_relevancy": float('nan'),
+                        "context_precision": float('nan'),
+                        "context_recall": float('nan')
                     }
                 
+                # ✅ DEBUG: Inspeccionar resultado crudo
+                print(f"🔍 Resultado crudo RAGAS:")
+                print(f"   Tipo: {type(result)}")
+                print(f"   Contenido: {result}")
+                
+                if hasattr(result, 'keys'):
+                    print(f"   Keys disponibles: {list(result.keys())}")
+                    for key in result.keys():
+                        value = result[key]
+                        print(f"   {key}: {value} (tipo: {type(value)})")
+                    
                 # ✅ SANITIZACIÓN CON DEBUG
                 def sanitize_ragas_value(value):
                     print(f"      🔧 Sanitizando: {value} (tipo: {type(value)})")
@@ -150,13 +239,21 @@ def calculate_ragas_metrics(user_query, model_responses, contexts, judge_respons
                     import math
                     import numpy as np
                     
-                    original_value = value
+                    # ✅ MANEJAR NaN ESPECÍFICAMENTE PRIMERO
+                    if isinstance(value, float) and math.isnan(value):
+                        print(f"         ❌ NaN detectado - RAGAS no pudo calcular la métrica")
+                        print(f"         Causas posibles: datos insuficientes, modelo juez no responde, o configuración incorrecta")
+                        return 0.0
                     
                     # Si es lista, tomar primer elemento
                     if isinstance(value, list):
                         if len(value) > 0:
                             value = value[0]
                             print(f"         Lista → primer elemento: {value}")
+                            # Verificar NaN en lista
+                            if isinstance(value, float) and math.isnan(value):
+                                print(f"         ❌ NaN en lista")
+                                return 0.0
                         else:
                             print(f"         Lista vacía → 0.0")
                             return 0.0
@@ -175,17 +272,16 @@ def calculate_ragas_metrics(user_query, model_responses, contexts, judge_respons
                     # Manejar NaN, inf, -inf
                     if isinstance(value, (int, float)):
                         if math.isnan(value):
-                            print(f"         NaN detectado → 0.0")
+                            print(f"         ❌ NaN después de conversión")
                             return 0.0
                         elif math.isinf(value):
-                            print(f"         Inf detectado → 0.0")
+                            print(f"         ❌ Inf detectado → 0.0")
                             return 0.0
                         else:
                             sanitized = round(float(value), 4)
-                            print(f"         Valor válido: {sanitized}")
-                            return sanitized
+                            print(f"         Valor válido: {sanitized}")                            return sanitized
                     
-                    # Fallback
+# Fallback
                     print(f"         Tipo no reconocido: {type(value)} → 0.0")
                     return 0.0
                 
