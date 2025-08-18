@@ -81,10 +81,18 @@ def calculate_ragas_metrics(user_query, model_responses, contexts, judge_respons
                 print(f"📝 Contexts count: {len(contexts)}")
                 
                 # ✅ GROUND TRUTH CON PREFERENCIA POR RESPUESTA DEL JUEZ
+                # ✅ VERIFICAR QUE GROUND TRUTH SEA DIFERENTE DEL ANSWER
                 if judge_response and len(str(judge_response).strip()) > 20:
-                    ground_truth = str(judge_response).strip()
-                    print(f"✅ Usando respuesta del juez como ground truth")
-                    print(f"📝 Ground truth (juez): {ground_truth[:150]}...")
+                    judge_text = str(judge_response).strip()
+                    
+                    # ✅ VERIFICAR QUE NO SEAN IDÉNTICOS
+                    if judge_text == response_text:
+                        print(f"⚠️ Judge response idéntico al model response - usando ground truth alternativo")
+                        ground_truth = f"A comprehensive, authoritative answer addressing: {user_query}"
+                    else:
+                        ground_truth = judge_text
+                        print(f"✅ Usando respuesta del juez como ground truth (diferente del modelo)")
+                        print(f"📝 Ground truth (juez): {ground_truth[:150]}...")
                 else:
                     ground_truth = f"A comprehensive answer addressing: {user_query}"
                     print(f"⚠️ Usando ground truth alternativo")
