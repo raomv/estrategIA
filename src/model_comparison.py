@@ -556,13 +556,34 @@ Question: {user_question}"""
                     if ragas_metrics:
                         print(f"✅ Métricas RAGAS calculadas para {len(ragas_metrics)} modelos")
                         
-                        # ✅ INTEGRAR MÉTRICAS RAGAS CON EL RESTO
+                        # ✅ INTEGRAR MÉTRICAS RAGAS CON EL RESTO - CÓDIGO COMPLETO
                         for model_name, ragas_scores in ragas_metrics.items():
+                            print(f"🔧 Integrando RAGAS para {model_name}: {ragas_scores}")
+                            
                             if model_name in metrics:
-                                metrics[model_name].update(ragas_scores)
-                                print(f"   📊 {model_name}: {len(ragas_scores)} métricas RAGAS añadidas")
+                                if isinstance(ragas_scores, dict):
+                                    # ✅ AÑADIR CADA MÉTRICA RAGAS AL DICCIONARIO EXISTENTE
+                                    for ragas_metric_name, ragas_value in ragas_scores.items():
+                                        if ragas_metric_name != 'ragas_error':  # Excluir errores
+                                            metrics[model_name][ragas_metric_name] = ragas_value
+                                            print(f"   ✅ {model_name}: {ragas_metric_name} = {ragas_value}")
+                                else:
+                                    print(f"   ❌ ragas_scores no es dict para {model_name}: {type(ragas_scores)}")
+                            else:
+                                print(f"   ⚠️ Modelo {model_name} no encontrado en metrics")
+                        
+                        print(f"✅ Métricas RAGAS integradas correctamente")
+                        
+                        # ✅ DEBUG FINAL: Verificar que se integraron
+                        for model_name in metrics.keys():
+                            ragas_keys = [k for k in metrics[model_name].keys() if k.startswith('ragas_')]
+                            if ragas_keys:
+                                print(f"   🎯 {model_name} tiene métricas RAGAS: {ragas_keys}")
+                            else:
+                                print(f"   ❌ {model_name} NO tiene métricas RAGAS")
+                            
                     else:
-                        print(f"⚠️ No se obtuvieron métricas RAGAS")
+                        print(f"⚠️ No se obtuvieron métricas RAGAS válidas")
                         
                 except Exception as ragas_error:
                     print(f"❌ Error calculando métricas RAGAS: {ragas_error}")

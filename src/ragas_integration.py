@@ -123,11 +123,11 @@ def calculate_ragas_metrics(user_query, model_responses, contexts, judge_respons
                 print(f"   Judge LLM configurado: {judge_llm}")
                 print(f"   Embed model configurado: {embed_model}")
                 print(f"   Faithfulness LLM: {getattr(faithfulness, 'llm', 'NO CONFIGURADO')}")
-                print(f"   Answer relevancy LLM: {getattr(answer_relevancy, 'llm', 'NO CONFIGURADO')}")
-                print(f"   Answer relevancy embeddings: {getattr(answer_relevancy, 'embeddings', 'NO CONFIGURADO')}")
-                print(f"   Context precision LLM: {getattr(context_precision, 'llm', 'NO CONFIGURADO')}")
                 print(f"   Context recall LLM: {getattr(context_recall, 'llm', 'NO CONFIGURADO')}")
                 print(f"   Context recall embeddings: {getattr(context_recall, 'embeddings', 'NO CONFIGURADO')}")
+                # ✅ MÉTRICAS DESACTIVADAS:
+                print(f"   ⚠️ Answer relevancy: DESACTIVADA (problemas de NaN)")
+                print(f"   ⚠️ Context precision: DESACTIVADA (problemas de NaN)")
                 
                 # ✅ TESTE DE COMPONENTES ANTES DE EVALUACIÓN
                 print(f"🔍 === TESTE DE COMPONENTES ===")
@@ -314,7 +314,7 @@ def calculate_ragas_metrics(user_query, model_responses, contexts, judge_respons
                 
                 ragas_results[model_name] = {}
                 
-                metrics_to_process = ["faithfulness", "answer_relevancy", "context_precision", "context_recall"]
+                metrics_to_process = ["faithfulness", "context_recall"]  # ✅ SOLO ESTAS DOS
                 
                 for metric_name in metrics_to_process:
                     try:
