@@ -197,9 +197,7 @@ def calculate_ragas_metrics(user_query, model_responses, contexts, judge_respons
                             # ✅ CONFIGURACIÓN DE TIMEOUT EN EVALUATE
                             individual_result = evaluate(
                                 dataset=dataset,
-                                metrics=[metric_obj],
-                                max_workers=1,  # ✅ Reducir concurrencia
-                                raise_exceptions=False  # ✅ No fallar si una métrica falla
+                                metrics=[metric_obj]
                             )
                             
                             value = individual_result[metric_name]
