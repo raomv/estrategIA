@@ -687,7 +687,7 @@ def evaluate_retrieval_metrics(query_engine, user_query, config):
                 
                 # Doc embeddings - intentar diferentes métodos
                 doc_embs = []
-                for node in nodes:
+                for i, node in enumerate(nodes):
                     try:
                         # Método 1: embedding directo en node
                         if hasattr(node, 'embedding') and node.embedding is not None:
@@ -698,46 +698,79 @@ def evaluate_retrieval_metrics(query_engine, user_query, config):
                         # Método 3: regenerar embedding del texto
                         else:
                             text = getattr(node, 'text', getattr(node, 'content', ''))
-                            if hasattr(node, 'node'):
-                                text = getattr(node.node, 'text', text)
-                            if text:
-                                emb = embed_model.get_text_embedding(text)
-                                doc_embs.append(np.array(emb, dtype=np.float32))
+                            if text and len(text.strip()) > 0:
+                                # ✅ CORRECCIÓN: Usar get_text_embedding en lugar de get_query_embedding
+                                new_emb = embed_model.get_text_embedding(text[:500])  # Truncar texto largo
+                                doc_embs.append(np.array(new_emb, dtype=np.float32))
+                                print(f"      ✅ Embedding regenerado para doc {i+1}")
+                            else:
+                                print(f"      ⚠️ Doc {i+1}: sin texto válido, omitiendo")
+                                continue
+
                     except Exception as e:
-                        print(f"⚠️ Error obteniendo embedding para doc: {e}")
+                        print(f"      ⚠️ Error obteniendo embedding para doc {i+1}: {e}")
                         continue
                 
-                if doc_embs and len(doc_embs == k):
+                # ✅ VERIFICAR QUE TENEMOS EMBEDDINGS VÁLIDOS
+                if doc_embs and len(doc_embs) > 0:
+                    print(f"      ✅ Embeddings obtenidos: {len(doc_embs)} de {k} documentos")
+                    
                     # Query-Doc similarities
                     qd_sims = []
-                    for doc_emb in doc_embs:
-                        sim = np.dot(q_emb, doc_emb) / (np.linalg.norm(q_emb) * np.linalg.norm(doc_emb))
-                        qd_sims.append(float(sim))
+                    for j, doc_emb in enumerate(doc_embs):
+                        try:
+                            # ✅ VERIFICAR DIMENSIONES COMPATIBLES
+                            if len(q_emb) != len(doc_emb):
+                                print(f"      ⚠️ Dimensiones incompatibles: query={len(q_emb)}, doc_{j}={len(doc_emb)}")
+                                continue
+                                
+                            sim = np.dot(q_emb, doc_emb) / (np.linalg.norm(q_emb) * np.linalg.norm(doc_emb))
+                            qd_sims.append(float(sim))
+                        except Exception as sim_error:
+                            print(f"      ⚠️ Error calculando similitud query-doc {j}: {sim_error}")
+                            continue
                     
-                    qd_mean = float(np.mean(qd_sims))
-                    qd_max = float(np.max(qd_sims))
-                    
-                    # Doc-Doc coherence
-                    if k > 1:
-                        dd_sims = []
-                        for i in range(k):
-                            for j in range(i+1, k):
-                                sim = np.dot(doc_embs[i], doc_embs[j]) / (
-                                    np.linalg.norm(doc_embs[i]) * np.linalg.norm(doc_embs[j])
-                                )
-                                dd_sims.append(float(sim))
-                        docdoc_coherence = float(np.mean(dd_sims))
-                        diversity = float(1.0 - docdoc_coherence)
+                    if qd_sims:  # ✅ VERIFICAR QUE HAY SIMILITUDES VÁLIDAS
+                        qd_mean = float(np.mean(qd_sims))
+                        qd_max = float(np.max(qd_sims))
+                        
+                        # Doc-Doc coherence
+                        if len(doc_embs) > 1:
+                            dd_sims = []
+                            for i in range(len(doc_embs)):
+                                for j in range(i + 1, len(doc_embs)):
+                                    try:
+                                        # ✅ VERIFICAR DIMENSIONES ANTES DE CALCULAR
+                                        if len(doc_embs[i]) != len(doc_embs[j]):
+                                            continue
+                                            
+                                        sim = np.dot(doc_embs[i], doc_embs[j]) / (
+                                            np.linalg.norm(doc_embs[i]) * np.linalg.norm(doc_embs[j])
+                                        )
+                                        dd_sims.append(float(sim))
+                                    except Exception as dd_error:
+                                        print(f"      ⚠️ Error en doc-doc similarity {i}-{j}: {dd_error}")
+                                        continue
+                            
+                            if dd_sims:  # ✅ VERIFICAR QUE HAY SIMILITUDES DOC-DOC
+                                docdoc_coherence = float(np.mean(dd_sims))
+                                diversity = float(1.0 - docdoc_coherence)
+                            else:
+                                print(f"      ⚠️ No se pudieron calcular similitudes doc-doc")
+                                docdoc_coherence = 1.0
+                                diversity = 0.0
+                        else:
+                            docdoc_coherence = 1.0
+                            diversity = 0.0
+                        
+                        print(f"📊 Query-Doc Mean: {qd_mean:.4f}")
+                        print(f"📊 Doc-Doc Coherence: {docdoc_coherence:.4f}")
+                        print(f"📊 Diversity: {diversity:.4f}")
                     else:
-                        docdoc_coherence = 1.0
-                        diversity = 0.0
-                    
-                    print(f"📊 Query-Doc Mean: {qd_mean:.4f}")
-                    print(f"📊 Doc-Doc Coherence: {docdoc_coherence:.4f}")
-                    print(f"📊 Diversity: {diversity:.4f}")
-                    
+                        print("⚠️ No se pudieron calcular similitudes query-doc válidas")
+                        qd_mean = qd_max = docdoc_coherence = diversity = None
                 else:
-                    print("⚠️ No se pudieron obtener embeddings para métricas geométricas")
+                    print("⚠️ No se pudieron obtener embeddings para ningún documento")
                     qd_mean = qd_max = docdoc_coherence = diversity = None
             else:
                 print("⚠️ No se pudo acceder al embed_model")
@@ -745,6 +778,8 @@ def evaluate_retrieval_metrics(query_engine, user_query, config):
                 
         except Exception as e:
             print(f"⚠️ Error calculando métricas de embeddings: {e}")
+            import traceback
+            print(f"Traceback: {traceback.format_exc()[:300]}...")
             qd_mean = qd_max = docdoc_coherence = diversity = None
         
         # ✅ MÉTRICAS OPERACIONALES
