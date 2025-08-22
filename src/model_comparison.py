@@ -103,7 +103,7 @@ def academic_llamaindex_evaluation(request: CompareRequest, config: dict):
         LlamaSettings.embed_model = embed_model
         
         # 2. Crear el LLM juez
-        judge_llm = Ollama(model=judge_model_name, url=config["llm_url"], request_timeout=300.0)
+        judge_llm = Ollama(model=judge_model_name, url=config["llm_url"], request_timeout=600.0)
         print(f"🏅 Juez configurado: {judge_model_name}")
         
         # ✅ CREAR EVALUADORES con manejo de errores individual
@@ -156,7 +156,7 @@ def academic_llamaindex_evaluation(request: CompareRequest, config: dict):
         temp_config = config.copy()
         temp_config["collection_name"] = collection_name
         
-        initial_llm = Ollama(model=models_to_compare[0], url=config["llm_url"], request_timeout=300.0)
+        initial_llm = Ollama(model=models_to_compare[0], url=config["llm_url"], request_timeout=600.0)
         rag_instance = RAG(config_file=temp_config, llm=initial_llm)
         shared_index = rag_instance.qdrant_index()
         
@@ -169,7 +169,7 @@ def academic_llamaindex_evaluation(request: CompareRequest, config: dict):
         print(f"🔍 Extrayendo contextos de Qdrant para RAGAS...")
         
         # Usar el primer modelo solo para extraer contextos (sin almacenar respuesta)
-        temp_llm = Ollama(model=models_to_compare[0], url=config["llm_url"], request_timeout=300.0)
+        temp_llm = Ollama(model=models_to_compare[0], url=config["llm_url"], request_timeout=600.0)
         temp_query_engine = shared_index.as_query_engine(
             llm=temp_llm,
             similarity_top_k=config.get("similarity_top_k", 3),
@@ -206,7 +206,7 @@ def academic_llamaindex_evaluation(request: CompareRequest, config: dict):
             model_metrics = {}
             
             try:
-                model_llm = Ollama(model=model_name, url=config["llm_url"], request_timeout=300.0)
+                model_llm = Ollama(model=model_name, url=config["llm_url"], request_timeout=600.0)
                 
                 query_engine = shared_index.as_query_engine(
                     llm=model_llm,

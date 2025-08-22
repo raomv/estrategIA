@@ -68,7 +68,7 @@ def get_or_create_rag(model_name: str, collection_name: str, chunk_size: int = 1
         cache_manager.ensure_embedding_model_ready(temp_config)
         
         # Crear LLM
-        llm_instance = Ollama(model=model_name, url=config["llm_url"], request_timeout=300.0)
+        llm_instance = Ollama(model=model_name, url=config["llm_url"], request_timeout=600.0)
         
         # Crear RAG sin embed_model - usará automáticamente el cache configurado
         rag_instance = RAG(config_file=temp_config, llm=llm_instance)
