@@ -55,12 +55,48 @@ def calculate_ragas_metrics(user_query, model_responses, contexts, judge_respons
         embed_model = cache_manager.get_cached_embedding_model()
         ragas_embeddings = LlamaIndexEmbeddingsWrapper(embeddings=embed_model)
 
-        # ✅ CONFIGURAR SOLO LAS MÉTRICAS QUE FUNCIONAN
-        faithfulness.llm = ragas_llm
-        context_recall.llm = ragas_llm
-        context_recall.embeddings = ragas_embeddings
+        # ✅ CONFIGURAR RUNCONFIG PARA RAGAS 0.2.0 SEGÚN DOCUMENTACIÓN OFICIAL
+        from ragas.run_config import RunConfig
 
-        print(f"✅ RAGAS configurado con juez LlamaIndex: {judge_model_name} (solo faithfulness y context_recall)")
+        # Crear configuración con timeouts extendidos según documentación
+        ragas_run_config = RunConfig(
+            timeout=1800,        # 30 minutos (vs 180s por defecto)
+            max_retries=3,       # Reintentos en caso de fallo temporal
+            max_wait=120,        # Máximo 2 minutos entre reintentos
+            max_workers=1        # Un solo worker para evitar sobrecarga
+        )
+
+        print(f"🔧 RunConfig configurado: timeout={ragas_run_config.timeout}s, max_retries={ragas_run_config.max_retries}")
+
+        # ✅ CONFIGURAR SOLO LAS MÉTRICAS QUE FUNCIONAN CON RUNCONFIG
+        print(f"🔧 === CONFIGURANDO MÉTRICAS RAGAS CON RUNCONFIG ===")
+
+        # Para faithfulness: necesita question, answer, contexts
+        try:
+            faithfulness.llm = ragas_llm
+            # ✅ APLICAR RUNCONFIG A LA MÉTRICA
+            if hasattr(faithfulness, 'run_config'):
+                faithfulness.run_config = ragas_run_config
+                print(f"✅ Faithfulness configurado con RunConfig extendido")
+            else:
+                print(f"⚠️ Faithfulness no tiene atributo run_config")
+        except Exception as e:
+            print(f"❌ Error configurando faithfulness: {e}")
+
+        # Para context_recall: necesita question, ground_truth, contexts, embeddings
+        try:
+            context_recall.llm = ragas_llm
+            context_recall.embeddings = ragas_embeddings
+            # ✅ APLICAR RUNCONFIG A LA MÉTRICA
+            if hasattr(context_recall, 'run_config'):
+                context_recall.run_config = ragas_run_config
+                print(f"✅ Context recall configurado con RunConfig extendido")
+            else:
+                print(f"⚠️ Context recall no tiene atributo run_config")
+        except Exception as e:
+            print(f"❌ Error configurando context_recall: {e}")
+
+        print(f"✅ RAGAS configurado con juez: {judge_model_name} y RunConfig extendido")
         
         # Calcular métricas
         ragas_results = {}
