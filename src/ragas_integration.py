@@ -43,26 +43,24 @@ def calculate_ragas_metrics(user_query, model_responses, contexts, judge_respons
         
         # ✅ CONFIGURAR RAGAS CON ESE LLM (SOLO LLAMAINDEX)
         from ragas import evaluate
-        from ragas.metrics import faithfulness, answer_relevancy, context_precision, context_recall
-        
+        # ✅ IMPORTAR SOLO LAS MÉTRICAS QUE FUNCIONAN
+        from ragas.metrics import faithfulness, context_recall  # ← SOLO ESTAS DOS
+
         # Usar los wrappers correctos
         ragas_llm = LlamaIndexLLMWrapper(llm=judge_llm)
-        
+
         # ✅ USAR EL MISMO EMBED_MODEL QUE EL PROYECTO
         from cache_manager import get_cache_manager
         cache_manager = get_cache_manager()
         embed_model = cache_manager.get_cached_embedding_model()
         ragas_embeddings = LlamaIndexEmbeddingsWrapper(embeddings=embed_model)
-        
-        # Configurar métricas RAGAS
+
+        # ✅ CONFIGURAR SOLO LAS MÉTRICAS QUE FUNCIONAN
         faithfulness.llm = ragas_llm
-        answer_relevancy.llm = ragas_llm
-        answer_relevancy.embeddings = ragas_embeddings
-        context_precision.llm = ragas_llm
         context_recall.llm = ragas_llm
         context_recall.embeddings = ragas_embeddings
-        
-        print(f"✅ RAGAS configurado con juez LlamaIndex: {judge_model_name}")
+
+        print(f"✅ RAGAS configurado con juez LlamaIndex: {judge_model_name} (solo faithfulness y context_recall)")
         
         # Calcular métricas
         ragas_results = {}
@@ -193,8 +191,8 @@ def calculate_ragas_metrics(user_query, model_responses, contexts, judge_respons
                     
                     metrics_to_test = [
                         ("faithfulness", faithfulness),
-                        ("answer_relevancy", answer_relevancy), 
-                        ("context_precision", context_precision),
+                        #("answer_relevancy", answer_relevancy), 
+                        #("context_precision", context_precision),
                         ("context_recall", context_recall)
                     ]
                     
