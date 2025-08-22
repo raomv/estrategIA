@@ -101,19 +101,58 @@ def calculate_ragas_metrics(user_query, model_responses, contexts, judge_respons
                     print(f"⚠️ Usando ground truth alternativo")
                     print(f"📝 Ground truth (alternativo): {ground_truth}")
                 
-                # ✅ CREAR DATASET CON VERIFICACIÓN
+                # ✅ OPTIMIZAR DATOS PARA RAGAS - REDUCIR COMPLEJIDAD
+                print(f"🔄 === OPTIMIZANDO DATOS PARA RAGAS (timeout 180s) ===")
+
+                # ✅ LIMITAR CONTEXTOS A MÁXIMO 2 FRAGMENTOS MÁS CORTOS
+                limited_contexts = contexts[:2] if contexts else ["No context available"]
+                truncated_contexts = []
+
+                for ctx in limited_contexts:
+                    # ✅ TRUNCAR CADA CONTEXTO A MÁXIMO 300 CARACTERES
+                    if len(ctx) > 300:
+                        truncated_ctx = ctx[:300] + "..."
+                        truncated_contexts.append(truncated_ctx)
+                        print(f"   ✂️ Contexto truncado: {len(ctx)} → {len(truncated_ctx)} chars")
+                    else:
+                        truncated_contexts.append(ctx)
+                        print(f"   ✅ Contexto mantenido: {len(ctx)} chars")
+
+                # ✅ TRUNCAR RESPUESTA DEL MODELO A MÁXIMO 200 CARACTERES
+                if len(response_text) > 200:
+                    truncated_response = response_text[:200] + "..."
+                    print(f"   ✂️ Respuesta truncada: {len(response_text)} → {len(truncated_response)} chars")
+                else:
+                    truncated_response = response_text
+                    print(f"   ✅ Respuesta mantenida: {len(response_text)} chars")
+
+                # ✅ TRUNCAR GROUND TRUTH A MÁXIMO 150 CARACTERES
+                if judge_response and len(str(judge_response).strip()) > 20:
+                    judge_text = str(judge_response).strip()
+                    if len(judge_text) > 150:
+                        ground_truth = judge_text[:150] + "..."
+                        print(f"   ✂️ Ground truth truncado: {len(judge_text)} → {len(ground_truth)} chars")
+                    else:
+                        ground_truth = judge_text
+                        print(f"   ✅ Ground truth del juez mantenido: {len(ground_truth)} chars")
+                else:
+                    ground_truth = f"Answer to: {user_query[:50]}..."
+                    print(f"   ⚠️ Ground truth alternativo corto: {len(ground_truth)} chars")
+
+                # ✅ CREAR DATASET OPTIMIZADO
                 data = {
-                    "question": [user_query],
-                    "answer": [response_text],
-                    "contexts": [contexts if contexts else ["No context available"]],
-                    "ground_truth": [ground_truth]  # ← ÚNICO CAMBIO AQUÍ
+                    "question": [user_query[:100]],  # ✅ TRUNCAR PREGUNTA TAMBIÉN
+                    "answer": [truncated_response],
+                    "contexts": [truncated_contexts],  # ✅ CONTEXTOS LIMITADOS Y TRUNCADOS
+                    "ground_truth": [ground_truth]
                 }
-                
-                print(f"📊 Dataset creado:")
-                print(f"   question: '{data['question'][0]}'")
-                print(f"   answer: '{data['answer'][0][:100]}...'")
-                print(f"   contexts: {len(data['contexts'][0])} items")
-                print(f"   ground_truth: '{data['ground_truth'][0][:100]}...'")
+
+                print(f"📊 Dataset RAGAS optimizado:")
+                print(f"   question: {len(data['question'][0])} chars")
+                print(f"   answer: {len(data['answer'][0])} chars") 
+                print(f"   contexts: {len(data['contexts'][0])} items, total: {sum(len(c) for c in data['contexts'][0])} chars")
+                print(f"   ground_truth: {len(data['ground_truth'][0])} chars")
+                print(f"   🎯 Total chars: {sum(len(str(v[0])) for v in data.values())} (objetivo: <800)")
                 
                 dataset = Dataset.from_dict(data)
                 print(f"✅ Dataset HuggingFace creado correctamente")

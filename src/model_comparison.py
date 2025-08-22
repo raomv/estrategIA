@@ -242,10 +242,11 @@ def academic_llamaindex_evaluation(request: CompareRequest, config: dict):
                             )
                         elif metric_name == "guideline":
                             try:
-                                # ✅ GuidelineEvaluator con manejo específico de errores JSON
+                                # ✅ PASAR CONTEXTO EXPLÍCITAMENTE AL GUIDELINE EVALUATOR
                                 eval_result = evaluator.evaluate_response(
                                     query=user_question,
-                                    response=response
+                                    response=response,
+                                    contexts=[node.text for node in response.source_nodes] if hasattr(response, 'source_nodes') and response.source_nodes else retrieved_contexts
                                 )
                                 
                                 # Extraer score de manera robusta
