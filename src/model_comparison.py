@@ -242,12 +242,12 @@ def academic_llamaindex_evaluation(request: CompareRequest, config: dict):
                             )
                         elif metric_name == "guideline":
                             try:
-                                # ✅ PASAR CONTEXTO EXPLÍCITAMENTE AL GUIDELINE EVALUATOR
+                                # ✅ NO PASAR CONTEXTS EXPLÍCITAMENTE - YA ESTÁN EN response.source_nodes
                                 eval_result = evaluator.evaluate_response(
                                     query=user_question,
-                                    response=response,
-                                    contexts=[node.text for node in response.source_nodes] if hasattr(response, 'source_nodes') and response.source_nodes else retrieved_contexts
+                                    response=response
                                 )
+                                print(f"      📝 Guideline evaluado - contexto automático desde source_nodes")
                                 
                                 # Extraer score de manera robusta
                                 if hasattr(eval_result, 'passing') and eval_result.passing is not None:
