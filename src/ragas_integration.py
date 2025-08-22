@@ -3,6 +3,7 @@ Integración de métricas RAGAS para evaluación estándar.
 RAGAS 0.2.0 con LlamaIndex (sin LangChain)
 """
 import logging
+import os
 from typing import Dict, List, Any, Optional
 
 logger = logging.getLogger(__name__)
@@ -13,6 +14,10 @@ def calculate_ragas_metrics(user_query, model_responses, contexts, judge_respons
     RAGAS 0.2.0 + LlamaIndex (sin LangChain)
     """
     try:
+        # ✅ CONFIGURAR TIMEOUTS DE RAGAS ANTES DE TODO
+        os.environ["RAGAS_EXECUTOR_TIMEOUT"] = "1800"  # 30 minutos
+        os.environ["RAGAS_DO_NOT_TRACK"] = "true"
+        
         # ✅ USAR EL MISMO PATRÓN QUE LAS MÉTRICAS NATIVAS
         judge_model_name = config.get("judge_model") if config else None
         llm_url = config.get("llm_url") if config else "http://localhost:11434"
@@ -32,9 +37,9 @@ def calculate_ragas_metrics(user_query, model_responses, contexts, judge_respons
             print(f"❌ No se pudo importar desde .base: {e}")
             return {}
         
-        # ✅ CREAR EL MISMO LLM QUE USAN LAS MÉTRICAS NATIVAS
+        # ✅ CREAR EL MISMO LLM QUE USAN LAS MÉTRICAS NATIVAS CON TIMEOUT EXTENDIDO
         from llama_index.llms.ollama import Ollama
-        judge_llm = Ollama(model=judge_model_name, base_url=llm_url, request_timeout=600.0)
+        judge_llm = Ollama(model=judge_model_name, base_url=llm_url, request_timeout=1800.0)  # 30 minutos
         
         # ✅ CONFIGURAR RAGAS CON ESE LLM (SOLO LLAMAINDEX)
         from ragas import evaluate
@@ -166,8 +171,8 @@ def calculate_ragas_metrics(user_query, model_responses, contexts, judge_respons
                     print(f"   Primera context preview: {data['contexts'][0][0][:100]}...")
                 print(f"   Ground truth preview: {data['ground_truth'][0][:100]}...")
                 
-                # ✅ EVALUAR UNA MÉTRICA A LA VEZ PARA IDENTIFICAR PROBLEMAS
-                print(f"🔄 === EVALUACIÓN INDIVIDUAL DE MÉTRICAS ===")
+                # ✅ EVALUAR UNA MÉTRICA A LA VEZ PARA IDENTIFICAR PROBLEMAS CON TIMEOUT CONFIGURADO
+                print(f"🔄 === EVALUACIÓN INDIVIDUAL DE MÉTRICAS CON TIMEOUT EXTENDIDO ===")
                 
                 try:
                     individual_results = {}
@@ -189,9 +194,12 @@ def calculate_ragas_metrics(user_query, model_responses, contexts, judge_respons
                             if hasattr(metric_obj, 'embeddings'):
                                 print(f"      Embeddings configurado: {metric_obj.embeddings is not None}")
                             
+                            # ✅ CONFIGURACIÓN DE TIMEOUT EN EVALUATE
                             individual_result = evaluate(
                                 dataset=dataset,
-                                metrics=[metric_obj]
+                                metrics=[metric_obj],
+                                max_workers=1,  # ✅ Reducir concurrencia
+                                raise_exceptions=False  # ✅ No fallar si una métrica falla
                             )
                             
                             value = individual_result[metric_name]
