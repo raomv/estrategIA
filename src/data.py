@@ -13,6 +13,7 @@ from llama_index.vector_stores.qdrant import QdrantVectorStore
 from llama_index.embeddings.fastembed import FastEmbedEmbedding
 from llama_index.llms.ollama import Ollama
 from llama_index.core.schema import Document
+from llama_index.core.node_parser import SentenceSplitter
 import os
 import argparse
 import yaml
@@ -57,8 +58,9 @@ class Data:
             raise ValueError("collection_name es obligatorio")
         
         if not chunk_size:
-            chunk_size = 1024  # Solo este valor puede tener un fallback técnico
+            chunk_size = 1024
         
+        print(f"✅ Usando chunk_size del frontend: {chunk_size}")
         print(f"Indexing data with extension '{extension}' to collection '{collection_name}'...")
         print(f"📁 Cache configurado en: {cache_info['fastembed_cache']}")
         
@@ -90,15 +92,27 @@ class Data:
         storage_context = StorageContext.from_defaults(vector_store=qdrant_vector_store)
 
         print("Configuring global settings for embeddings...")
-        Settings.embed_model = embedder  # Solo embeddings
-        # Settings.llm = llm  # ❌ ELIMINAR - NO necesario para indexación
-        Settings.chunk_size = chunk_size
+        Settings.embed_model = embedder
 
-        print("Indexing documents in Qdrant...")
+        # ✅ SOLUCIÓN: Crear node parser explícito con chunk_size del frontend
+        from llama_index.core.node_parser import SentenceSplitter
+        
+        text_splitter = SentenceSplitter(
+            chunk_size=chunk_size,
+            chunk_overlap=20,  # Overlap estándar
+        )
+        
+        print(f"🔧 Configurando text splitter con chunk_size: {chunk_size}")
+
+        # ✅ USAR from_documents CON transformations EXPLÍCITAS
+        print("Indexing documents in Qdrant with custom chunk size...")
         index = VectorStoreIndex.from_documents(
-            documents, storage_context=storage_context
+            documents, 
+            storage_context=storage_context,
+            transformations=[text_splitter]  # ← AQUÍ se aplica el chunk_size real
         )
         print(f"Data indexed successfully to Qdrant. Collection: {collection_name}")
+        print(f"✅ Documentos chunkeados con tamaño: {chunk_size}")
         return index
 
 
