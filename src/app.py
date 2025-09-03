@@ -296,30 +296,6 @@ def create_collection(request: dict):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error al crear colección: {str(e)}")
 
-@app.post("/api/documents/process")
-async def process_documents(request: dict):
-    """Procesa documentos y los carga en una colección específica."""
-    try:
-        collection = request.get("collection")
-        directory = request.get("directory")
-        chunk_size = request.get("chunk_size", config["chunk_size"])
-        
-        if not collection or not directory:
-            raise HTTPException(status_code=400, detail="Colección y directorio requeridos")
-            
-        import subprocess
-        
-        process = subprocess.Popen([
-            "python", "-m", "src.process_documents",
-            "--directory", directory,
-            "--collection", collection,
-            "--chunk_size", str(chunk_size)
-        ], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        
-        return {"job_id": str(process.pid), "message": "Procesamiento iniciado"}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error al procesar documentos: {str(e)}")
-
 @app.get("/api/documents/status/{job_id}")
 def check_processing_status(job_id: str):
     """Verifica el estado de un trabajo de procesamiento."""
