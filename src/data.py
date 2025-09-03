@@ -52,7 +52,7 @@ class Data:
             except Exception as e:
                 print(f"[ERROR] Falló la conversión de '{pdf_file}': {e}")
 
-    def ingest(self, embedder, extension=".txt", collection_name=None, chunk_size=None):
+    def ingest(self, embedder, llm=None, extension=".txt", collection_name=None, chunk_size=None):
         """Indexa documentos - NO necesita LLM, solo embeddings."""
         if not collection_name:
             raise ValueError("collection_name es obligatorio")
@@ -173,10 +173,8 @@ if __name__ == "__main__":
         embed_model = cache_manager.create_embedding_model(config)
         print("FastEmbedEmbedding model loaded successfully.")
         
-        llm = Ollama(model=args.model, base_url=config["llm_url"])
         data.ingest(
             embedder=embed_model, 
-            llm=llm, 
             extension=args.extension,
             collection_name=args.collection,
             chunk_size=args.chunk_size
