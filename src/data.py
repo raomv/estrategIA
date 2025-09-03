@@ -94,17 +94,17 @@ class Data:
         print("Configuring global settings for embeddings...")
         Settings.embed_model = embedder
 
-        # ✅ SOLUCIÓN: Crear node parser explícito con chunk_size del frontend
-        from llama_index.core.node_parser import SentenceSplitter
+        # ✅ SOLUCIÓN: Usar un divisor más simple y rápido para archivos grandes
+        from llama_index.core.node_parser import SimpleNodeParser
         
-        text_splitter = SentenceSplitter(
+        text_splitter = SimpleNodeParser.from_defaults(
             chunk_size=chunk_size,
-            chunk_overlap=20,  # Overlap estándar
+            chunk_overlap=20,
         )
         
-        print(f"🔧 Configurando text splitter con chunk_size: {chunk_size}")
+        print(f"🔧 Usando SimpleNodeParser con chunk_size: {chunk_size}")
 
-        # =================== NUEVO CÓDIGO ===================
+        # =================== CÓDIGO EXISTENTE (SE MANTIENE) ===================
         # Forzar el parseo de documentos a nodos ANTES de la indexación
         print("Parsing documents into nodes with custom splitter...")
         nodes = text_splitter.get_nodes_from_documents(documents)
