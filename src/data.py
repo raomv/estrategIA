@@ -104,12 +104,18 @@ class Data:
         
         print(f"🔧 Configurando text splitter con chunk_size: {chunk_size}")
 
-        # ✅ USAR from_documents CON transformations EXPLÍCITAS
-        print("Indexing documents in Qdrant with custom chunk size...")
-        index = VectorStoreIndex.from_documents(
-            documents, 
+        # =================== NUEVO CÓDIGO ===================
+        # Forzar el parseo de documentos a nodos ANTES de la indexación
+        print("Parsing documents into nodes with custom splitter...")
+        nodes = text_splitter.get_nodes_from_documents(documents)
+        print(f"✅ Documentos divididos en {len(nodes)} nodos.")
+        # ====================================================
+
+        # ✅ USAR from_nodes en lugar de from_documents
+        print("Indexing nodes in Qdrant...")
+        index = VectorStoreIndex(
+            nodes,  # <--- Usar los nodos ya parseados
             storage_context=storage_context,
-            transformations=[text_splitter]  # ← AQUÍ se aplica el chunk_size real
         )
         print(f"Data indexed successfully to Qdrant. Collection: {collection_name}")
         print(f"✅ Documentos chunkeados con tamaño: {chunk_size}")
