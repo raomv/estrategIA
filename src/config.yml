@@ -1,6 +1,6 @@
 data_path: "../data"
 llm_url: "http://localhost:11434"
 qdrant_url: "http://localhost:6333"
-embedding_model: "snowflake-arctic-embed-m-v2.0"
+embedding_model: "snowflake-arctic-embed-l"
 #embedding_model: "BAAI/bge-large-en-v1.5"
 #embedding_model: "intfloat/multilingual-e5-large"
