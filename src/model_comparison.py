@@ -139,7 +139,32 @@ def academic_llamaindex_evaluation(request: CompareRequest, config: dict):
         try:
             evaluators["guideline"] = GuidelineEvaluator(
                 llm=judge_llm,
-                guidelines="IGNORE your training knowledge. Evaluate ONLY against the provided context. The response should use only information from the given context documents. Do not apply external knowledge about typical military structures or common practices."
+                #guidelines="IGNORE your training knowledge. Evaluate ONLY against the provided context. The response should use only information from the given context documents. Do not apply external knowledge about typical military structures or common practices."
+                guidelines="""
+                You are evaluating whether the response is appropriately grounded in the provided context documents.
+
+                EVALUATION CRITERIA:
+                1. **Primary Content**: The main facts, processes, and specific details should come from the provided context
+                2. **Appropriate Integration**: The response may use widely accepted general knowledge to:
+                - Explain terminology that appears in the context
+                - Provide logical connections between context elements  
+                - Give structure and coherence to the information
+                3. **Avoid Fabrication**: The response should NOT invent specific details, procedures, or references that are not supported by the context
+
+                ACCEPTABLE:
+                - Using the context as the primary source of information
+                - Explaining acronyms/terms that appear in the context using standard definitions
+                - Making logical inferences directly supported by the context
+                - Organizing context information in a coherent manner
+
+                NOT ACCEPTABLE:
+                - Contradicting information explicitly stated in the context
+                - Adding specific technical details not present or implied in the context
+                - Making claims about procedures/processes not supported by the context
+                - Inventing specific document references, codes, or procedures
+
+                INSTRUCTION: Evaluate whether the response follows these guidelines. Focus on whether the core information comes from the context, not whether every single word was explicitly mentioned.
+                """
             )
             print("✅ GuidelineEvaluator creado (con instrucciones estrictas)")
         except Exception as e:
